@@ -1,0 +1,27 @@
+spring:
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    open-in-view: false
+
+jwt:
+  secret: ${JWT_SECRET}
+  access:
+    expiration: ${JWT_ACCESS_EXP}
+  refresh:
+    expiration: ${JWT_REFRESH_EXP}
+
+payments:
+  webhook:
+    secret: ${PAYMENTS_WEBHOOK_SECRET}
+
+server:
+  servlet:
+    context-path: /crowdspark
