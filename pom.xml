@@ -29,6 +29,7 @@
 	<properties>
 		<java.version>21</java.version>
 	</properties>
+
 	<dependencies>
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
@@ -72,6 +73,15 @@
 <!--			<groupId>org.springframework.boot</groupId>-->
 <!--			<artifactId>spring-boot-starter-oauth2-client</artifactId>-->
 <!--		</dependency>-->
+
+		<!-- Cloudinary Java SDK -->
+		<dependency>
+			<groupId>com.cloudinary</groupId>
+			<artifactId>cloudinary-http44</artifactId>
+			<version>1.38.0</version>
+		</dependency>
+
+
 
 
 		<dependency>
@@ -125,7 +135,9 @@
 							<groupId>org.projectlombok</groupId>
 							<artifactId>lombok</artifactId>
 						</path>
-					</annotationProcessorPaths>
+					</annotationProcessorPaths><source>21</source>
+					<target>21</target>
+					<compilerArgs>--enable-preview</compilerArgs>
 				</configuration>
 			</plugin>
 			<plugin>

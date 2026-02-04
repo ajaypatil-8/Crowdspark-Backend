@@ -11,9 +11,11 @@ import Crowdspark.Crowdspark.security.JwtUtil;
 import Crowdspark.Crowdspark.service.AuthService;
 import Crowdspark.Crowdspark.service.RefreshTokenService;
 import Crowdspark.Crowdspark.service.UserService;
+import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -55,8 +57,10 @@ public class AuthController {
 
 
     @PostMapping("/login")
-    public ResponseEntity<LoginResponse> login(@Valid @RequestBody LoginRequest request) {
-
+    public ResponseEntity<LoginResponse> login(
+            @Valid @RequestBody LoginRequest request,
+            HttpServletResponse response
+    ) {
         User user = authService.login(
                 request.getIdentifier(),
                 request.getPassword()
@@ -65,13 +69,31 @@ public class AuthController {
         String accessToken = jwtUtil.generateAccessToken(user);
         RefreshToken refreshToken = refreshTokenService.create(user.getId());
 
-        logger.info("User login success: id={}, username={}", user.getId(), user.getUsername());
+        ResponseCookie accessCookie = ResponseCookie.from("accessToken", accessToken)
+                .httpOnly(true)
+                .secure(false)
+                .path("/")
+                .sameSite("Lax")
+                .maxAge(60 * 60)
+                .build();
+
+        ResponseCookie refreshCookie = ResponseCookie.from("refreshToken", refreshToken.getToken())
+                .httpOnly(true)
+                .secure(false)
+                .path("/")
+                .sameSite("Lax")
+                .maxAge(7 * 24 * 60 * 60)
+                .build();
+
+        response.addHeader("Set-Cookie", accessCookie.toString());
+        response.addHeader("Set-Cookie", refreshCookie.toString());
 
         return ResponseEntity.ok(new LoginResponse(
                 accessToken,
                 refreshToken.getToken()
         ));
     }
+
 
 
     @PostMapping("/refresh")

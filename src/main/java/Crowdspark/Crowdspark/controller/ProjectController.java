@@ -2,6 +2,7 @@ package Crowdspark.Crowdspark.controller;
 
 import Crowdspark.Crowdspark.dto.AssignCategoriesRequest;
 import Crowdspark.Crowdspark.dto.CreateProjectRequest;
+import Crowdspark.Crowdspark.dto.ProjectListResponse;
 import Crowdspark.Crowdspark.dto.ProjectResponse;
 import Crowdspark.Crowdspark.service.ProjectService;
 import lombok.RequiredArgsConstructor;
@@ -56,6 +57,17 @@ public class ProjectController {
         List<ProjectResponse> projects = projectService.getApprovedProjects(page, size);
         return ResponseEntity.ok(projects);
     }
+
+    @GetMapping("/listings")
+    public ResponseEntity<List<ProjectListResponse>> getProjects(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "12") int size
+    ) {
+        return ResponseEntity.ok(
+                projectService.getProjectsForListing(page, size)
+        );
+    }
+
 
     @PreAuthorize("hasRole('CREATOR')")
     @GetMapping("/my")

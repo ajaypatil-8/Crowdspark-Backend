@@ -1,6 +1,7 @@
 package Crowdspark.Crowdspark.service;
 
 import Crowdspark.Crowdspark.dto.CreateProjectRequest;
+import Crowdspark.Crowdspark.dto.ProjectListResponse;
 import Crowdspark.Crowdspark.dto.ProjectResponse;
 
 import java.util.List;
@@ -18,5 +19,8 @@ public interface ProjectService {
     ProjectResponse rejectProject(Long projectId);
 
     ProjectResponse assignCategories(Long projectId, List<Long> categoryIds);
+
+    List<ProjectListResponse> getProjectsForListing(int page, int size);
+
 
 }

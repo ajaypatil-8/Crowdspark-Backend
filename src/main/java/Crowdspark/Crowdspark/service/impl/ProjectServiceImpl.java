@@ -1,12 +1,11 @@
 package Crowdspark.Crowdspark.service.impl;
 
-import Crowdspark.Crowdspark.dto.CategoryResponse;
-import Crowdspark.Crowdspark.dto.CreateProjectRequest;
-import Crowdspark.Crowdspark.dto.ProjectMediaResponse;
-import Crowdspark.Crowdspark.dto.ProjectResponse;
+import Crowdspark.Crowdspark.dto.*;
 import Crowdspark.Crowdspark.entity.Category;
 import Crowdspark.Crowdspark.entity.Project;
+import Crowdspark.Crowdspark.entity.ProjectMedia;
 import Crowdspark.Crowdspark.entity.User;
+import Crowdspark.Crowdspark.entity.type.MediaType;
 import Crowdspark.Crowdspark.entity.type.ProjectStatus;
 import Crowdspark.Crowdspark.entity.type.Role;
 import Crowdspark.Crowdspark.exception.AuthException;
@@ -19,6 +18,8 @@ import Crowdspark.Crowdspark.service.ProjectService;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.modelmapper.ModelMapper;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 
@@ -68,6 +69,43 @@ public class ProjectServiceImpl implements ProjectService {
                 .map(this::mapProject)
                 .toList();
     }
+
+    @Override
+    public List<ProjectListResponse> getProjectsForListing(int page, int size) {
+
+        var pageable = PageRequest.of(
+                page,
+                size,
+                Sort.by("createdAt").descending()
+        );
+
+        return projectRepository
+                .findByStatus(ProjectStatus.APPROVED, pageable)
+                .stream()
+                .map(project -> {
+
+                    User creator = userRepository.findById(project.getCreatorId())
+                            .orElseThrow(() -> new AuthException("Creator not found"));
+
+                    String thumbnailUrl = projectMediaRepository
+                            .findFirstByProjectIdAndType(project.getId(), MediaType.IMAGE)
+                            .map(ProjectMedia::getUrl)
+                            .orElse(null);
+
+                    return new ProjectListResponse(
+                            project.getId(),
+                            project.getTitle(),
+                            project.getDescription(), // or shortDescription field if you add one
+                            thumbnailUrl,
+                            creator.getUsername(),
+                            project.getGoalAmount(),
+                            project.getCurrentAmount(),
+                            project.getCreatedAt()
+                    );
+                })
+                .toList();
+    }
+
 
     @Override
     public List<ProjectResponse> getMyProjects() {

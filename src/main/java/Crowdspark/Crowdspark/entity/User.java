@@ -43,6 +43,7 @@ public class User {
     private boolean isEnabled = true;
     private boolean isLocked = false;
 
+
     @CreatedDate
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;

@@ -28,7 +28,7 @@ public class SecurityConfig {
                         sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
                 )
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/auth/**").permitAll()
+                        .requestMatchers("/auth/**" , "/api/test/**").permitAll()
                         .requestMatchers("/api/payments/webhook").permitAll()
                         .anyRequest().authenticated()
                 )
@@ -36,6 +36,8 @@ public class SecurityConfig {
                         jwtAuthenticationFilter,
                         UsernamePasswordAuthenticationFilter.class
                 );
+
+
 
         return http.build();
     }
