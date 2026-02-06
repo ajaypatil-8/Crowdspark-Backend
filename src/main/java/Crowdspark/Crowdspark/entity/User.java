@@ -28,14 +28,14 @@ public class User {
     private String username;
 
     @Column(unique = true)
-    private String email;        // nullable ✔
+    private String email;
 
     @Column(unique = true)
-    private String phoneNumber;  // nullable ✔
+    private String phoneNumber;
 
-    private String password;     // nullable ✔ (OAuth / OTP)
+    private String password;
 
-    private String provider;     // LOCAL, OTP, GOOGLE
+    private String provider;   // LOCAL, GOOGLE, OTP
     private String providerId;
 
     private boolean emailVerified;
@@ -43,11 +43,11 @@ public class User {
     private boolean isEnabled = true;
     private boolean isLocked = false;
 
-
     @CreatedDate
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
+    // 🔥 ROLES
     @ElementCollection(fetch = FetchType.EAGER)
     @Enumerated(EnumType.STRING)
     @CollectionTable(
@@ -57,5 +57,12 @@ public class User {
     @Column(name = "role")
     private Set<Role> roles = new HashSet<>();
 
-}
+    // ⭐ helper method (VERY IMPORTANT FOR US)
+    public void addRole(Role role) {
+        this.roles.add(role);
+    }
 
+    public boolean hasRole(Role role) {
+        return this.roles.contains(role);
+    }
+}

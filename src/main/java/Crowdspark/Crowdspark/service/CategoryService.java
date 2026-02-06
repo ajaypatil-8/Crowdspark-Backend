@@ -1,13 +1,12 @@
 package Crowdspark.Crowdspark.service;
 
-import Crowdspark.Crowdspark.dto.CategoryResponse;
-import Crowdspark.Crowdspark.dto.CreateCategoryRequest;
+import Crowdspark.Crowdspark.entity.Category;
 
 import java.util.List;
 
 public interface CategoryService {
 
-    CategoryResponse create(CreateCategoryRequest request);
+    Category createCategory(String name);
 
-    List<CategoryResponse> getAll();
+    List<Category> getAllCategories();
 }

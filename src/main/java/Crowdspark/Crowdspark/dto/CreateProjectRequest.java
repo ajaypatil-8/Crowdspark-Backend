@@ -1,24 +1,55 @@
 package Crowdspark.Crowdspark.dto;
 
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
-import jakarta.validation.constraints.Positive;
-import jakarta.validation.constraints.Size;
+import Crowdspark.Crowdspark.entity.type.MediaType;
+import Crowdspark.Crowdspark.entity.type.MediaUsage;
+import jakarta.validation.constraints.*;
 import lombok.Data;
 
-@Data
+import java.time.LocalDateTime;
+import java.util.List;
 
+@Data
 public class CreateProjectRequest {
 
-    @NotBlank(message = "Title is required")
-    @Size(max = 255)
+    @NotBlank
     private String title;
 
-    @NotBlank(message = "Description is required")
-    @Size(max = 5000)
-    private String description;
+    @NotBlank
+    @Size(max = 300)
+    private String shortDescription;
 
-    @NotNull(message = "Goal amount is required")
-    @Positive(message = "Goal amount must be positive")
+    @NotBlank
+    private String fullDescription;
+
+    @NotBlank
+    private String location;
+
+    @NotNull
+    @Positive
     private Double goalAmount;
+
+    @NotNull
+    private LocalDateTime deadline;
+
+    @NotEmpty
+    private List<Long> categoryIds;
+
+    @NotEmpty
+    private List<ProjectMediaRequest> media;
+
+    // ---- INNER DTO ----
+    @Data
+    public static class ProjectMediaRequest {
+
+        @NotBlank
+        private String mediaUrl;     // Cloudinary URL
+
+        @NotNull
+        private MediaType mediaType; // IMAGE / VIDEO
+
+        @NotNull
+        private MediaUsage usage;    // THUMBNAIL, CARD_VIDEO, STORY_IMAGE...
+
+        private Integer displayOrder;
+    }
 }
