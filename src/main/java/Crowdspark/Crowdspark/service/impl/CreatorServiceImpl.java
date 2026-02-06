@@ -24,17 +24,25 @@ public class CreatorServiceImpl implements CreatorService {
     private final OtpRepository otpRepository;
     private final EmailService emailService;
 
+    // 🔐 get logged user from JWT (userId)
+    private User getCurrentUser() {
+        String userIdStr = SecurityContextHolder.getContext()
+                .getAuthentication()
+                .getPrincipal()
+                .toString();
+
+        Long userId = Long.parseLong(userIdStr);
+
+        return userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+    }
+
     // SEND OTP
     @Override
     @Transactional
     public String sendOtp() {
 
-        String username = SecurityContextHolder.getContext()
-                .getAuthentication()
-                .getName();
-
-        User user = userRepository.findByUsername(username)
-                .orElseThrow(() -> new RuntimeException("User not found"));
+        User user = getCurrentUser();
 
         if (user.getEmail() == null) {
             throw new RuntimeException("Email not found for this user");
@@ -46,7 +54,6 @@ public class CreatorServiceImpl implements CreatorService {
 
         // generate OTP
         String otp = String.valueOf(new Random().nextInt(900000) + 100000);
-
 
         // delete old OTP
         otpRepository.deleteByEmail(user.getEmail());
@@ -71,12 +78,7 @@ public class CreatorServiceImpl implements CreatorService {
     @Transactional
     public String verifyOtp(VerifyOtpRequest request) {
 
-        String username = SecurityContextHolder.getContext()
-                .getAuthentication()
-                .getName();
-
-        User user = userRepository.findByUsername(username)
-                .orElseThrow(() -> new RuntimeException("User not found"));
+        User user = getCurrentUser();
 
         OtpVerification otpEntity = otpRepository.findByEmail(user.getEmail())
                 .orElseThrow(() -> new RuntimeException("OTP not found"));
@@ -93,7 +95,6 @@ public class CreatorServiceImpl implements CreatorService {
         user.getRoles().add(Role.CREATOR);
         userRepository.save(user);
 
-        // delete otp
         otpRepository.deleteByEmail(user.getEmail());
 
         return "Creator role activated successfully 🚀";

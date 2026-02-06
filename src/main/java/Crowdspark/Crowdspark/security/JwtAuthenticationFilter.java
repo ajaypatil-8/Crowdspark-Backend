@@ -6,6 +6,7 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
 import org.springframework.stereotype.Component;
@@ -32,7 +33,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         String authHeader = request.getHeader("Authorization");
 
-        // No token → continue (will fail later if endpoint is protected)
+        // no token
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
             filterChain.doFilter(request, response);
             return;
@@ -40,30 +41,28 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         String token = authHeader.substring(7);
 
+        // invalid token
         if (!jwtUtil.isTokenValid(token)) {
             filterChain.doFilter(request, response);
             return;
         }
 
-
         Claims claims = jwtUtil.extractClaims(token);
 
+        // 👤 userId stored in JWT subject
+        String userId = claims.getSubject();
 
-
-
-        String username = claims.get("username", String.class);
+        // 🎭 roles
         List<String> roles = claims.get("roles", List.class);
 
+        // convert roles to authorities
         var authorities = roles.stream()
-                .map(r -> (org.springframework.security.core.GrantedAuthority)
-                        () -> "ROLE_" + r)
+                .map(role -> new SimpleGrantedAuthority("ROLE_" + role))
                 .toList();
-
-        String userId = claims.getSubject(); // <-- THIS IS USER ID
 
         UsernamePasswordAuthenticationToken authentication =
                 new UsernamePasswordAuthenticationToken(
-                        userId,   // 👈 principal = userId
+                        claims.get("username"),
                         null,
                         authorities
                 );

@@ -28,8 +28,31 @@ public class SecurityConfig {
                         sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
                 )
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/auth/**" , "/api/test/**").permitAll()
-                        .requestMatchers("/api/payments/webhook").permitAll()
+
+
+                        .requestMatchers(
+                                "/auth/**",
+                                "/api/projects/feed",
+                                "/api/projects/{id}"
+                        ).permitAll()
+
+
+                        .requestMatchers(
+                                "/api/creator/send-otp",
+                                "/api/creator/verify-otp"
+                        ).authenticated()
+
+
+                        .requestMatchers(
+                                "/api/projects/create",
+                                "/api/projects/creator/**"
+                        ).hasRole("CREATOR")
+
+
+                        .requestMatchers("/api/admin/**")
+                        .hasRole("ADMIN")
+
+
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(
@@ -37,14 +60,11 @@ public class SecurityConfig {
                         UsernamePasswordAuthenticationFilter.class
                 );
 
-
-
         return http.build();
     }
 
     @Bean
     public UserDetailsService userDetailsService() {
-        return new InMemoryUserDetailsManager(); // EMPTY
+        return new InMemoryUserDetailsManager();
     }
-
 }
