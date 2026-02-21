@@ -43,7 +43,6 @@ public class ProjectServiceImpl implements ProjectService {
         if (categories.isEmpty()) {
             throw new RuntimeException("Invalid categories");
         }
-
         // 3. Create project
         Project project = new Project();
         project.setTitle(request.getTitle());
