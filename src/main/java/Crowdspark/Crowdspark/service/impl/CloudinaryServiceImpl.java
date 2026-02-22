@@ -6,6 +6,7 @@ import com.cloudinary.utils.ObjectUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.util.HashMap;
 import java.util.Map;
 
 @Service
@@ -17,10 +18,15 @@ public class CloudinaryServiceImpl implements CloudinaryService {
         this.cloudinary = cloudinary;
     }
 
+
     @Override
     public String uploadFile(MultipartFile file, String folder) {
+        return uploadFileWithDetails(file, folder).get("secure_url");
+    }
+
+    @Override
+    public Map<String, String> uploadFileWithDetails(MultipartFile file, String folder) {
         try {
-            // 🔍 Detect file type
             String contentType = file.getContentType();
             String resourceType = "image";
 
@@ -28,7 +34,6 @@ public class CloudinaryServiceImpl implements CloudinaryService {
                 resourceType = "video";
             }
 
-            // ☁️ Upload to Cloudinary
             Map uploadResult = cloudinary.uploader().upload(
                     file.getBytes(),
                     ObjectUtils.asMap(
@@ -37,12 +42,29 @@ public class CloudinaryServiceImpl implements CloudinaryService {
                     )
             );
 
-            // 🔗 Return secure CDN URL
-            return uploadResult.get("secure_url").toString();
+            Map<String, String> result = new HashMap<>();
+            result.put("secure_url", uploadResult.get("secure_url").toString());
+            result.put("public_id", uploadResult.get("public_id").toString());
+
+            return result;
 
         } catch (Exception e) {
-            e.printStackTrace(); // keep for debugging
+            e.printStackTrace();
             throw new RuntimeException("Cloudinary upload failed: " + e.getMessage());
+        }
+    }
+
+
+    @Override
+    public void deleteFile(String publicId) {
+        try {
+            cloudinary.uploader().destroy(
+                    publicId,
+                    ObjectUtils.asMap("resource_type", "image")
+            );
+        } catch (Exception e) {
+            e.printStackTrace();
+            throw new RuntimeException("Cloudinary delete failed: " + e.getMessage());
         }
     }
 }

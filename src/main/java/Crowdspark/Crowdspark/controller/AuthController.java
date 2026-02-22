@@ -13,14 +13,15 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
 import java.net.URI;
@@ -53,6 +54,7 @@ public class AuthController {
 
         return ResponseEntity.created(location).body(response);
     }
+
 
     @PostMapping("/login")
     public ResponseEntity<LoginResponse> login(
@@ -91,18 +93,16 @@ public class AuthController {
         return ResponseEntity.ok(new LoginResponse(newAccessToken, newToken.getToken()));
     }
 
+
     @PreAuthorize("isAuthenticated()")
     @PostMapping("/logout")
     public ResponseEntity<Map<String, String>> logout() {
 
-        if (SecurityContextHolder.getContext().getAuthentication() == null ||
-                !SecurityContextHolder.getContext().getAuthentication().isAuthenticated()) {
-            throw new AuthException("Not authenticated");
-        }
+        // principal is the username String set by JwtAuthenticationFilter
+        String username = SecurityContextHolder.getContext()
+                .getAuthentication().getName();
 
-        String principalName = SecurityContextHolder.getContext().getAuthentication().getName();
-        User user = userService.getByUsername(principalName);
-
+        User user = userService.getByUsername(username);
         refreshTokenService.revokeAll(user.getId());
 
         logger.info("User logged out: id={}, username={}", user.getId(), user.getUsername());
@@ -113,52 +113,54 @@ public class AuthController {
 
     @PreAuthorize("isAuthenticated()")
     @GetMapping("/me")
-    public ResponseEntity<UserResponse> getMe(@AuthenticationPrincipal UserDetails userDetails) {
-        User user = userService.getByUsername(userDetails.getUsername());
+    public ResponseEntity<UserResponse> getMe(
+            @AuthenticationPrincipal String username
+    ) {
+        User user = userService.getByUsername(username);
         return ResponseEntity.ok(userService.getProfile(user.getId()));
     }
+
 
     @PreAuthorize("isAuthenticated()")
     @PutMapping("/me/profile")
     public ResponseEntity<UserResponse> updateProfile(
-            @AuthenticationPrincipal UserDetails userDetails,
+            @AuthenticationPrincipal String username,
             @Valid @RequestBody UpdateProfileRequest request
     ) {
-        User user = userService.getByUsername(userDetails.getUsername());
+        User user = userService.getByUsername(username);
         return ResponseEntity.ok(userService.updateProfile(user.getId(), request));
     }
 
 
     @PreAuthorize("isAuthenticated()")
-    @PutMapping("/me/profile-image")
+    @PutMapping(value = "/me/profile-image", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<UserResponse> updateProfileImage(
-            @AuthenticationPrincipal UserDetails userDetails,
-            @RequestParam String imageUrl,
-            @RequestParam String publicId
+            @AuthenticationPrincipal String username,
+            @RequestPart("file") MultipartFile file
     ) {
-        User user = userService.getByUsername(userDetails.getUsername());
-        return ResponseEntity.ok(userService.updateProfileImage(user.getId(), imageUrl, publicId));
+        User user = userService.getByUsername(username);
+        return ResponseEntity.ok(userService.updateProfileImage(user.getId(), file));
     }
 
 
     @PreAuthorize("isAuthenticated()")
-    @PutMapping("/me/banner-image")
+    @PutMapping(value = "/me/banner-image", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<UserResponse> updateBannerImage(
-            @AuthenticationPrincipal UserDetails userDetails,
-            @RequestParam String imageUrl,
-            @RequestParam String publicId
+            @AuthenticationPrincipal String username,
+            @RequestPart("file") MultipartFile file
     ) {
-        User user = userService.getByUsername(userDetails.getUsername());
-        return ResponseEntity.ok(userService.updateBannerImage(user.getId(), imageUrl, publicId));
+        User user = userService.getByUsername(username);
+        return ResponseEntity.ok(userService.updateBannerImage(user.getId(), file));
     }
+
 
     @PreAuthorize("hasRole('BACKER')")
     @PostMapping("/me/upgrade-to-creator")
     public ResponseEntity<UserResponse> upgradeToCreator(
-            @AuthenticationPrincipal UserDetails userDetails,
+            @AuthenticationPrincipal String username,
             @Valid @RequestBody CreatorUpgradeRequest request
     ) {
-        User user = userService.getByUsername(userDetails.getUsername());
+        User user = userService.getByUsername(username);
         UserResponse response = userService.upgradeToCreator(user.getId(), request);
 
         logger.info("Creator upgrade requested: userId={}", user.getId());
