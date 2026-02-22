@@ -1,8 +1,8 @@
 package Crowdspark.Crowdspark.dto;
 
-import jakarta.persistence.Column;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
 
@@ -14,14 +14,17 @@ public class RegisterRequest {
     private String username;
 
     @NotBlank
+    private String name;
+
+    @NotBlank
     @Email
-    @Column(nullable = false)
     private String email;
 
+
+    @Pattern(regexp = "^(\\+91)?[6-9]\\d{9}$", message = "Enter a valid Indian mobile number")
     private String phoneNumber;
 
     @NotBlank
     @Size(min = 8, message = "Password must be at least 8 characters")
     private String password;
-
 }
