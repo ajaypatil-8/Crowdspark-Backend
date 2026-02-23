@@ -14,14 +14,23 @@ public class EmailServiceImpl implements EmailService {
         this.mailSender = mailSender;
     }
 
+    // OTP
     @Override
-    public void sendOtpEmail(String toEmail, String otp) {
-
+    public void sendOtpEmail(String toEmail, String name, String otp) {
         SimpleMailMessage message = new SimpleMailMessage();
         message.setTo(toEmail);
         message.setSubject("CrowdSpark OTP");
-        message.setText("Your OTP: " + otp + " valid for 5 minutes");
+        message.setText("Hi " + name + ",\n\nYour OTP: " + otp + "\nValid for 10 minutes.\n\nTeam CrowdSpark");
+        mailSender.send(message);
+    }
 
+    // mail
+    @Override
+    public void sendSimpleEmail(String toEmail, String subject, String body) {
+        SimpleMailMessage message = new SimpleMailMessage();
+        message.setTo(toEmail);
+        message.setSubject(subject);
+        message.setText(body);
         mailSender.send(message);
     }
 }

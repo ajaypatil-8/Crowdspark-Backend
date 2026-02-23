@@ -29,9 +29,11 @@ public class SecurityConfig {
                 )
                 .authorizeHttpRequests(auth -> auth
 
-
+                        // Public
                         .requestMatchers(
-                                "/auth/**",
+                                "/auth/register",
+                                "/auth/login",
+                                "/auth/refresh",
                                 "/api/projects/feed",
                                 "/api/projects/{id}"
                         ).permitAll()
@@ -44,13 +46,19 @@ public class SecurityConfig {
 
 
                         .requestMatchers(
+                                "/api/creator/submit-kyc",
+                                "/api/creator/upload-kyc-doc",
+                                "/api/creator/kyc-status"
+                        ).hasRole("CREATOR")
+
+
+                        .requestMatchers(
                                 "/api/projects/create",
                                 "/api/projects/creator/**"
                         ).hasRole("CREATOR")
 
-
-                        .requestMatchers("/api/admin/**")
-                        .hasRole("ADMIN")
+                        // Admin only
+                        .requestMatchers("/admin/**").hasRole("ADMIN")
 
 
                         .anyRequest().authenticated()

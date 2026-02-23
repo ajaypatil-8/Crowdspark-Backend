@@ -1,8 +1,9 @@
 package Crowdspark.Crowdspark.entity;
 
-import Crowdspark.Crowdspark.entity.type.Role;
-import Crowdspark.Crowdspark.entity.type.Gender;
 import Crowdspark.Crowdspark.entity.type.AccountStatus;
+import Crowdspark.Crowdspark.entity.type.Gender;
+import Crowdspark.Crowdspark.entity.type.KycStatus;
+import Crowdspark.Crowdspark.entity.type.Role;
 import jakarta.persistence.*;
 import lombok.*;
 import org.springframework.data.annotation.CreatedDate;
@@ -21,16 +22,12 @@ import java.util.Set;
 @Table(name = "users")
 public class User {
 
-    // ─────────────────────────────────────────
-    // PRIMARY KEY
-    // ─────────────────────────────────────────
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    // ─────────────────────────────────────────
-    // BASIC AUTH FIELDS (Registration)
-    // ─────────────────────────────────────────
+
     private String name;
 
     @Column(unique = true)
@@ -44,8 +41,9 @@ public class User {
 
     private String password;
 
-    private String provider;       // LOCAL, GOOGLE
+    private String provider;
     private String providerId;
+
 
     private boolean emailVerified;
     private boolean phoneVerified;
@@ -56,9 +54,16 @@ public class User {
     @Column(nullable = false)
     private AccountStatus accountStatus = AccountStatus.ACTIVE;
 
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private KycStatus kycStatus = KycStatus.NOT_SUBMITTED;
+
     @CreatedDate
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
+
+    private LocalDateTime lastLoginAt;
 
 
     @ElementCollection(fetch = FetchType.EAGER)
@@ -73,7 +78,6 @@ public class User {
 
     private String profileImageUrl;
     private String profileImagePublicId;
-
     private String bannerImageUrl;
     private String bannerImagePublicId;
 
@@ -103,36 +107,6 @@ public class User {
     private Double latitude;
     private Double longitude;
 
-
-
-    // PAN Card
-    private String panNumber;
-    private String panCardImageUrl;
-    private String panCardImagePublicId;
-
-    // Aadhaar
-    private String aadhaarNumber;
-    private String aadhaarFrontImageUrl;
-    private String aadhaarFrontPublicId;
-    private String aadhaarBackImageUrl;
-    private String aadhaarBackPublicId;
-
-
-    private boolean isKycVerified = false;
-    private LocalDateTime kycSubmittedAt;
-    private LocalDateTime kycVerifiedAt;
-
-
-    private String bankAccountHolderName;
-    private String bankAccountNumber;
-    private String bankIfscCode;
-    private String bankName;
-    private String bankBranchName;
-
-
-    private String upiId;
-
-
     private String profession;
     private String organization;
 
@@ -144,11 +118,8 @@ public class User {
     @Column(name = "category")
     private Set<String> interestedCategories = new HashSet<>();
 
-
     private Integer totalProjectsBacked = 0;
     private Double totalAmountBacked = 0.0;
-
-
     private Integer totalProjectsCreated = 0;
     private Double totalFundsRaised = 0.0;
 

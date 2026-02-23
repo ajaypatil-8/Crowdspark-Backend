@@ -40,35 +40,28 @@ public class AuthController {
     private final JwtUtil jwtUtil;
     private final RefreshTokenService refreshTokenService;
 
-
+    // reg
     @PostMapping("/register")
     public ResponseEntity<UserResponse> register(@Valid @RequestBody RegisterRequest request) {
         UserResponse response = userService.register(request);
-
         URI location = ServletUriComponentsBuilder.fromCurrentContextPath()
-                .path("/users/{id}")
-                .buildAndExpand(response.getId())
-                .toUri();
-
+                .path("/users/{id}").buildAndExpand(response.getId()).toUri();
         logger.info("User registered: username={}, id={}", response.getUsername(), response.getId());
-
         return ResponseEntity.created(location).body(response);
     }
 
-
+    // login
     @PostMapping("/login")
     public ResponseEntity<LoginResponse> login(
             @Valid @RequestBody LoginRequest request,
             HttpServletResponse response
     ) {
         User user = authService.login(request.getIdentifier(), request.getPassword());
-
         String accessToken = jwtUtil.generateAccessToken(user);
         RefreshToken refreshToken = refreshTokenService.create(user.getId());
 
         ResponseCookie accessCookie = ResponseCookie.from("accessToken", accessToken)
                 .httpOnly(true).secure(false).path("/").sameSite("Lax").maxAge(60 * 60).build();
-
         ResponseCookie refreshCookie = ResponseCookie.from("refreshToken", refreshToken.getToken())
                 .httpOnly(true).secure(false).path("/").sameSite("Lax").maxAge(7 * 24 * 60 * 60).build();
 
@@ -78,49 +71,38 @@ public class AuthController {
         return ResponseEntity.ok(new LoginResponse(accessToken, refreshToken.getToken()));
     }
 
-
+    // refr
     @PostMapping("/refresh")
     public ResponseEntity<LoginResponse> refresh(@RequestParam String refreshToken) {
         RefreshToken oldToken = refreshTokenService.validate(refreshToken);
         User user = userService.getById(oldToken.getUserId());
-
         refreshTokenService.revoke(oldToken.getToken());
         RefreshToken newToken = refreshTokenService.create(user.getId());
         String newAccessToken = jwtUtil.generateAccessToken(user);
-
         logger.info("Refresh token rotated for userId={}", user.getId());
-
         return ResponseEntity.ok(new LoginResponse(newAccessToken, newToken.getToken()));
     }
 
-
+    // out
     @PreAuthorize("isAuthenticated()")
     @PostMapping("/logout")
     public ResponseEntity<Map<String, String>> logout() {
-
-        // principal is the username String set by JwtAuthenticationFilter
-        String username = SecurityContextHolder.getContext()
-                .getAuthentication().getName();
-
+        String username = SecurityContextHolder.getContext().getAuthentication().getName();
         User user = userService.getByUsername(username);
         refreshTokenService.revokeAll(user.getId());
-
         logger.info("User logged out: id={}, username={}", user.getId(), user.getUsername());
-
         return ResponseEntity.ok(Map.of("message", "Logged out successfully"));
     }
 
-
+    // me
     @PreAuthorize("isAuthenticated()")
     @GetMapping("/me")
-    public ResponseEntity<UserResponse> getMe(
-            @AuthenticationPrincipal String username
-    ) {
+    public ResponseEntity<UserResponse> getMe(@AuthenticationPrincipal String username) {
         User user = userService.getByUsername(username);
         return ResponseEntity.ok(userService.getProfile(user.getId()));
     }
 
-
+    // upd
     @PreAuthorize("isAuthenticated()")
     @PutMapping("/me/profile")
     public ResponseEntity<UserResponse> updateProfile(
@@ -131,7 +113,7 @@ public class AuthController {
         return ResponseEntity.ok(userService.updateProfile(user.getId(), request));
     }
 
-
+    // pic
     @PreAuthorize("isAuthenticated()")
     @PutMapping(value = "/me/profile-image", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<UserResponse> updateProfileImage(
@@ -142,7 +124,7 @@ public class AuthController {
         return ResponseEntity.ok(userService.updateProfileImage(user.getId(), file));
     }
 
-
+    // bnr
     @PreAuthorize("isAuthenticated()")
     @PutMapping(value = "/me/banner-image", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<UserResponse> updateBannerImage(
@@ -151,20 +133,5 @@ public class AuthController {
     ) {
         User user = userService.getByUsername(username);
         return ResponseEntity.ok(userService.updateBannerImage(user.getId(), file));
-    }
-
-
-    @PreAuthorize("hasRole('BACKER')")
-    @PostMapping("/me/upgrade-to-creator")
-    public ResponseEntity<UserResponse> upgradeToCreator(
-            @AuthenticationPrincipal String username,
-            @Valid @RequestBody CreatorUpgradeRequest request
-    ) {
-        User user = userService.getByUsername(username);
-        UserResponse response = userService.upgradeToCreator(user.getId(), request);
-
-        logger.info("Creator upgrade requested: userId={}", user.getId());
-
-        return ResponseEntity.ok(response);
     }
 }
