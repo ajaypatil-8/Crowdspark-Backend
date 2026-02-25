@@ -4,6 +4,8 @@ import Crowdspark.Crowdspark.dto.*;
 import Crowdspark.Crowdspark.entity.User;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.util.Optional;
+
 public interface UserService {
 
     UserResponse register(RegisterRequest request);
@@ -16,4 +18,6 @@ public interface UserService {
 
     UserResponse updateProfileImage(Long userId, MultipartFile file);
     UserResponse updateBannerImage(Long userId, MultipartFile file);
+    Optional<User> findByEmail(String email);
+    User save(User user);
 }

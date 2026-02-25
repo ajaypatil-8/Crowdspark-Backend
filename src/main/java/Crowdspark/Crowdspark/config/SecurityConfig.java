@@ -1,6 +1,7 @@
 package Crowdspark.Crowdspark.config;
 
 import Crowdspark.Crowdspark.security.JwtAuthenticationFilter;
+import Crowdspark.Crowdspark.security.OAuth2SuccessHandler;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -18,6 +19,7 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
+    private final OAuth2SuccessHandler oAuth2SuccessHandler;
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
@@ -29,6 +31,12 @@ public class SecurityConfig {
                 )
                 .authorizeHttpRequests(auth -> auth
 
+                        // 🔥 OAuth endpoints must be public
+                        .requestMatchers(
+                                "/oauth2/**",
+                                "/login/oauth2/**"
+                        ).permitAll()
+
                         // Public
                         .requestMatchers(
                                 "/auth/register",
@@ -38,12 +46,10 @@ public class SecurityConfig {
                                 "/api/projects/{id}"
                         ).permitAll()
 
-
                         .requestMatchers(
                                 "/api/creator/send-otp",
                                 "/api/creator/verify-otp"
                         ).authenticated()
-
 
                         .requestMatchers(
                                 "/api/creator/submit-kyc",
@@ -51,18 +57,21 @@ public class SecurityConfig {
                                 "/api/creator/kyc-status"
                         ).hasRole("CREATOR")
 
-
                         .requestMatchers(
                                 "/api/projects/create",
                                 "/api/projects/creator/**"
                         ).hasRole("CREATOR")
 
-                        // Admin only
                         .requestMatchers("/admin/**").hasRole("ADMIN")
-
 
                         .anyRequest().authenticated()
                 )
+
+                // 🔥 Enable OAuth2
+                .oauth2Login(oauth -> oauth
+                        .successHandler(oAuth2SuccessHandler)
+                )
+
                 .addFilterBefore(
                         jwtAuthenticationFilter,
                         UsernamePasswordAuthenticationFilter.class

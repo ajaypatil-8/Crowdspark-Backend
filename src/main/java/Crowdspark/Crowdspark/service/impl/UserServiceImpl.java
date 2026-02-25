@@ -14,9 +14,11 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
-
 import java.util.Map;
 import java.util.Set;
+import java.util.Optional;
+
+
 
 @Service
 @RequiredArgsConstructor
@@ -154,5 +156,15 @@ public class UserServiceImpl implements UserService {
     // map
     private UserResponse mapToResponse(User user) {
         return modelMapper.map(user, UserResponse.class);
+    }
+
+    @Override
+    public Optional<User> findByEmail(String email) {
+        return userRepository.findByEmail(email);
+    }
+
+    @Override
+    public User save(User user) {
+        return userRepository.save(user);
     }
 }

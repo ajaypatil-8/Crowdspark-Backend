@@ -2,7 +2,6 @@ package Crowdspark.Crowdspark.repository;
 
 import Crowdspark.Crowdspark.entity.User;
 import org.springframework.data.jpa.repository.JpaRepository;
-
 import java.util.Optional;
 
 
