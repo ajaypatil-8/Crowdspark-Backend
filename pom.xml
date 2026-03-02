@@ -74,6 +74,7 @@
 			<artifactId>spring-boot-starter-oauth2-client</artifactId>
 		</dependency>
 
+
 		<!-- Cloudinary Java SDK -->
 		<dependency>
 			<groupId>com.cloudinary</groupId>

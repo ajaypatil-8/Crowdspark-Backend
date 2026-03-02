@@ -31,7 +31,7 @@ public class SecurityConfig {
                 )
                 .authorizeHttpRequests(auth -> auth
 
-                        // 🔥 OAuth endpoints must be public
+
                         .requestMatchers(
                                 "/oauth2/**",
                                 "/login/oauth2/**"
@@ -67,8 +67,9 @@ public class SecurityConfig {
                         .anyRequest().authenticated()
                 )
 
-                // 🔥 Enable OAuth2
+
                 .oauth2Login(oauth -> oauth
+                        .loginPage("/oauth2/authorization/github")
                         .successHandler(oAuth2SuccessHandler)
                 )
 
