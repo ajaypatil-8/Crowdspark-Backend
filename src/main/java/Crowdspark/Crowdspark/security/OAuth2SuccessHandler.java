@@ -6,7 +6,6 @@ import Crowdspark.Crowdspark.entity.type.Role;
 import Crowdspark.Crowdspark.service.RefreshTokenService;
 import Crowdspark.Crowdspark.service.UserService;
 import jakarta.servlet.ServletException;
-import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
@@ -17,6 +16,8 @@ import org.springframework.security.web.authentication.AuthenticationSuccessHand
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 
 @Component
@@ -34,8 +35,6 @@ public class OAuth2SuccessHandler implements AuthenticationSuccessHandler {
             throws IOException, ServletException {
 
         OAuth2User oauthUser = (OAuth2User) authentication.getPrincipal();
-
-        // Detect provider (google / github)
         OAuth2AuthenticationToken oauthToken = (OAuth2AuthenticationToken) authentication;
         String provider = oauthToken.getAuthorizedClientRegistrationId();
 
@@ -44,26 +43,20 @@ public class OAuth2SuccessHandler implements AuthenticationSuccessHandler {
         String providerId;
 
         if (provider.equals("google")) {
-            email = oauthUser.getAttribute("email");
-            name = oauthUser.getAttribute("name");
+            email      = oauthUser.getAttribute("email");
+            name       = oauthUser.getAttribute("name");
             providerId = oauthUser.getAttribute("sub");
-        }
-        else if (provider.equals("github")) {
-            email = oauthUser.getAttribute("email");
-            name = oauthUser.getAttribute("name");
+        } else if (provider.equals("github")) {
+            email      = oauthUser.getAttribute("email");
+            name       = oauthUser.getAttribute("name");
             providerId = String.valueOf(oauthUser.getAttribute("id"));
-
-            // GitHub may not provide email if private
-            if (email == null) {
-                email = providerId + "@github.oauth";
-            }
-        }
-        else {
+            if (email == null) email = providerId + "@github.oauth";
+        } else {
             throw new RuntimeException("Unsupported OAuth provider");
         }
 
-        String finalEmail = email;
-        String finalName = name;
+        String finalEmail      = email;
+        String finalName       = name;
         String finalProviderId = providerId;
 
         User user = userService.findByEmail(finalEmail).orElseGet(() -> {
@@ -81,22 +74,13 @@ public class OAuth2SuccessHandler implements AuthenticationSuccessHandler {
         user.setLastLoginAt(LocalDateTime.now());
         userService.save(user);
 
-        String accessToken = jwtUtil.generateAccessToken(user);
+        String accessToken        = jwtUtil.generateAccessToken(user);
         RefreshToken refreshToken = refreshTokenService.create(user.getId());
 
-        Cookie accessCookie = new Cookie("accessToken", accessToken);
-        accessCookie.setHttpOnly(true);
-        accessCookie.setPath("/");
-        accessCookie.setMaxAge(60 * 60);
+        String redirect = "http://localhost:3000/oauth-callback"
+                + "?token="   + URLEncoder.encode(accessToken, StandardCharsets.UTF_8)
+                + "&refresh=" + URLEncoder.encode(refreshToken.getToken(), StandardCharsets.UTF_8);
 
-        Cookie refreshCookie = new Cookie("refreshToken", refreshToken.getToken());
-        refreshCookie.setHttpOnly(true);
-        refreshCookie.setPath("/");
-        refreshCookie.setMaxAge(7 * 24 * 60 * 60);
-
-        response.addCookie(accessCookie);
-        response.addCookie(refreshCookie);
-
-        response.sendRedirect("http://localhost:3000/dashboard");
+        response.sendRedirect(redirect);
     }
 }
