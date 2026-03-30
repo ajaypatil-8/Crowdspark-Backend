@@ -33,9 +33,6 @@ public class KycServiceImpl implements KycService {
     private final EmailService emailService;
     private final AuditLogService auditLogService;
 
-    // ─────────────────────────────────────────
-    // STEP 1 — SEND OTP
-    // ─────────────────────────────────────────
     @Override
     @Transactional
     public String sendOtp(Long userId) {
@@ -47,10 +44,10 @@ public class KycServiceImpl implements KycService {
             throw new AuthException("You are already a verified creator");
         }
 
-        // Generate 6-digit OTP
+
         String otp = String.valueOf(100000 + new Random().nextInt(900000));
 
-        // Delete any existing OTP for this email
+
         otpRepository.findByEmail(user.getEmail())
                 .ifPresent(otpRepository::delete);
 
@@ -69,10 +66,6 @@ public class KycServiceImpl implements KycService {
         return "OTP sent to " + user.getEmail() + ". Valid for 10 minutes.";
     }
 
-    // ─────────────────────────────────────────
-    // STEP 2 — VERIFY OTP
-    // Adds CREATOR role, sets kycStatus = PENDING_SUBMISSION
-    // ─────────────────────────────────────────
     @Override
     @Transactional
     public String verifyOtp(Long userId, String otpInput) {
@@ -98,7 +91,7 @@ public class KycServiceImpl implements KycService {
             throw new AuthException("Invalid OTP. Please try again");
         }
 
-        // ✅ OTP verified — add CREATOR role + set kycStatus
+
         user.addRole(Role.CREATOR);
         user.setKycStatus(KycStatus.PENDING_SUBMISSION);
         userRepository.save(user);
@@ -111,10 +104,7 @@ public class KycServiceImpl implements KycService {
         return "OTP verified successfully. Please submit your KYC documents to complete creator setup.";
     }
 
-    // ─────────────────────────────────────────
-    // STEP 3 — SUBMIT KYC DOCUMENTS
-    // Sets kycStatus = PENDING_APPROVAL
-    // ─────────────────────────────────────────
+
     @Override
     @Transactional
     public KycStatusResponse submitKyc(Long userId, KycSubmitRequest request) {
@@ -138,8 +128,7 @@ public class KycServiceImpl implements KycService {
             throw new AuthException("Please verify OTP first before submitting KYC");
         }
 
-        // Create or update KYC document record
-        // (allow resubmission if REJECTED)
+
         KycDocument kyc = kycDocumentRepository.findByUserId(userId)
                 .orElse(new KycDocument());
 
@@ -180,9 +169,7 @@ public class KycServiceImpl implements KycService {
         return mapToResponse(user, kyc);
     }
 
-    // ─────────────────────────────────────────
-    // GET MY KYC STATUS
-    // ─────────────────────────────────────────
+
     @Override
     public KycStatusResponse getMyKycStatus(Long userId) {
         User user = getUser(userId);
@@ -191,9 +178,7 @@ public class KycServiceImpl implements KycService {
         return mapToResponse(user, kyc);
     }
 
-    // ─────────────────────────────────────────
-    // ADMIN — GET ALL PENDING KYC
-    // ─────────────────────────────────────────
+
     @Override
     public List<KycStatusResponse> getPendingKyc() {
         return kycDocumentRepository.findByKycStatus(KycStatus.PENDING_APPROVAL)
@@ -205,10 +190,7 @@ public class KycServiceImpl implements KycService {
                 .collect(Collectors.toList());
     }
 
-    // ─────────────────────────────────────────
-    // ADMIN — APPROVE KYC
-    // kycStatus = APPROVED → user can now create campaigns
-    // ─────────────────────────────────────────
+
     @Override
     @Transactional
     public KycStatusResponse approveKyc(Long userId, Long adminId) {
@@ -244,10 +226,7 @@ public class KycServiceImpl implements KycService {
         return mapToResponse(user, kyc);
     }
 
-    // ─────────────────────────────────────────
-    // ADMIN — REJECT KYC
-    // kycStatus = REJECTED → user must resubmit docs
-    // ─────────────────────────────────────────
+
     @Override
     @Transactional
     public KycStatusResponse rejectKyc(Long userId, Long adminId, String reason) {
@@ -289,9 +268,7 @@ public class KycServiceImpl implements KycService {
         return mapToResponse(user, kyc);
     }
 
-    // ─────────────────────────────────────────
-    // HELPERS
-    // ─────────────────────────────────────────
+
     private User getUser(Long userId) {
         return userRepository.findById(userId)
                 .orElseThrow(() -> new AuthException("User not found"));
