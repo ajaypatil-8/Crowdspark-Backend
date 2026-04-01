@@ -2,6 +2,7 @@ package Crowdspark.Crowdspark.dto;
 
 import Crowdspark.Crowdspark.entity.type.AccountStatus;
 import Crowdspark.Crowdspark.entity.type.Gender;
+import Crowdspark.Crowdspark.entity.type.KycStatus;
 import Crowdspark.Crowdspark.entity.type.Role;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -71,4 +72,5 @@ public class UserResponse {
     private Double totalAmountBacked;
     private Integer totalProjectsCreated;
     private Double totalFundsRaised;
+    private KycStatus kycStatus;
 }

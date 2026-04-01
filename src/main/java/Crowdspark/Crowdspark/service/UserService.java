@@ -19,5 +19,7 @@ public interface UserService {
     UserResponse updateProfileImage(Long userId, MultipartFile file);
     UserResponse updateBannerImage(Long userId, MultipartFile file);
     Optional<User> findByEmail(String email);
+    Optional<User> findByProviderAndProviderId(String provider, String providerId);
+    boolean existsByUsername(String username);
     User save(User user);
 }

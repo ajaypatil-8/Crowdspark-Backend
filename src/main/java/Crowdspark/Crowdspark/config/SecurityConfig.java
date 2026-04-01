@@ -15,6 +15,9 @@ import org.springframework.security.provisioning.InMemoryUserDetailsManager;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
+
 @Configuration
 @EnableMethodSecurity
 @RequiredArgsConstructor
@@ -30,7 +33,7 @@ public class SecurityConfig {
                 .csrf(csrf -> csrf.disable())
                 .cors(Customizer.withDefaults())
                 .sessionManagement(sm ->
-                        sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
+                        sm.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED)
                 )
                 .authorizeHttpRequests(auth -> auth
 
@@ -73,6 +76,11 @@ public class SecurityConfig {
                 .oauth2Login(oauth -> oauth
                         .loginPage("/oauth2/authorization/github")
                         .successHandler(oAuth2SuccessHandler)
+                        .failureHandler((request, response, exception) -> {
+                            String msg = URLEncoder.encode(
+                                    exception.getMessage(), StandardCharsets.UTF_8);
+                            response.sendRedirect("http://localhost:3000/login?error=" + msg);
+                        })
                 )
 
                 .addFilterBefore(

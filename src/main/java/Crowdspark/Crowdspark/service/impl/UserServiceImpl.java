@@ -167,4 +167,12 @@ public class UserServiceImpl implements UserService {
     public User save(User user) {
         return userRepository.save(user);
     }
+    @Override
+    public Optional<User> findByProviderAndProviderId(String provider, String providerId) {
+        return userRepository.findByProviderAndProviderId(provider, providerId);
+    }
+    @Override
+    public boolean existsByUsername(String username) {
+        return userRepository.existsByUsername(username);
+    }
 }
