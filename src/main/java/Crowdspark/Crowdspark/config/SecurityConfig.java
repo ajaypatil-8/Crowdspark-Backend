@@ -23,6 +23,9 @@ import java.nio.charset.StandardCharsets;
 @RequiredArgsConstructor
 public class SecurityConfig {
 
+    @org.springframework.beans.factory.annotation.Value("${app.frontend.url:http://localhost:3000}")
+    private String frontendUrl;
+
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
     private final OAuth2SuccessHandler oAuth2SuccessHandler;
 
@@ -79,7 +82,7 @@ public class SecurityConfig {
                         .failureHandler((request, response, exception) -> {
                             String msg = URLEncoder.encode(
                                     exception.getMessage(), StandardCharsets.UTF_8);
-                            response.sendRedirect("http://localhost:3000/login?error=" + msg);
+                            response.sendRedirect(frontendUrl + "/login?error=" + msg);
                         })
                 )
 

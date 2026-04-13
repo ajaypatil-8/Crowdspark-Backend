@@ -47,6 +47,7 @@ public class User {
 
     private boolean emailVerified;
     private boolean phoneVerified;
+    private boolean kycVerified;
     private boolean isEnabled = true;
     private boolean isLocked = false;
 
@@ -109,6 +110,12 @@ public class User {
 
     private String profession;
     private String organization;
+
+    // Bank/payment info — copied from KycDocument on KYC approval
+    private String upiId;
+    private String bankName;
+    private String maskedBankAccount;
+    private String bankIfscCode;
 
     @ElementCollection
     @CollectionTable(

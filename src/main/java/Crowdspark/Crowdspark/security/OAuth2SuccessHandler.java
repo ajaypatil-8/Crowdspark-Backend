@@ -10,6 +10,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.*;
 import org.springframework.security.core.Authentication;
@@ -34,6 +35,9 @@ import java.util.UUID;
 @Component
 @RequiredArgsConstructor
 public class OAuth2SuccessHandler implements AuthenticationSuccessHandler {
+
+    @Value("${app.frontend.url:http://localhost:3000}")
+    private String frontendUrl;
 
     private final UserService userService;
     private final JwtUtil jwtUtil;
@@ -82,7 +86,7 @@ public class OAuth2SuccessHandler implements AuthenticationSuccessHandler {
             }
 
         } else {
-            response.sendRedirect("http://localhost:3000/login?error=unsupported_provider");
+            response.sendRedirect(frontendUrl + "/login?error=unsupported_provider");
             return;
         }
 
@@ -122,7 +126,7 @@ public class OAuth2SuccessHandler implements AuthenticationSuccessHandler {
         String accessToken        = jwtUtil.generateAccessToken(user);
         RefreshToken refreshToken = refreshTokenService.create(user.getId());
 
-        String redirect = "http://localhost:3000/oauth-callback"
+        String redirect = frontendUrl + "/oauth-callback"
                 + "?token="   + URLEncoder.encode(accessToken,             StandardCharsets.UTF_8)
                 + "&refresh=" + URLEncoder.encode(refreshToken.getToken(),  StandardCharsets.UTF_8);
 

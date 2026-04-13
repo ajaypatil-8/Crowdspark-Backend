@@ -209,6 +209,15 @@ public class KycServiceImpl implements KycService {
         kycDocumentRepository.save(kyc);
 
         user.setKycStatus(KycStatus.APPROVED);
+        user.setKycVerified(true);
+        // Copy bank/payment info from KYC doc to user for easy access in UserResponse
+        user.setBankName(kyc.getBankName());
+        user.setBankIfscCode(kyc.getBankIfscCode());
+        user.setUpiId(kyc.getUpiId());
+        if (kyc.getBankAccountNumber() != null && kyc.getBankAccountNumber().length() >= 4) {
+            user.setMaskedBankAccount("****" +
+                    kyc.getBankAccountNumber().substring(kyc.getBankAccountNumber().length() - 4));
+        }
         userRepository.save(user);
 
         // Notify user via email
@@ -250,6 +259,7 @@ public class KycServiceImpl implements KycService {
 
         // Set back to PENDING_SUBMISSION so user can resubmit
         user.setKycStatus(KycStatus.PENDING_SUBMISSION);
+        user.setKycVerified(false);
         userRepository.save(user);
 
         // Notify user via email
