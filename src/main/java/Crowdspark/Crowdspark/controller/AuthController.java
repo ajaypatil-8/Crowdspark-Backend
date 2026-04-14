@@ -13,6 +13,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
@@ -22,10 +23,6 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
-import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
-
-import java.net.URI;
-import java.util.Map;
 
 @RestController
 @RequestMapping("/auth")
@@ -40,19 +37,17 @@ public class AuthController {
     private final JwtUtil jwtUtil;
     private final RefreshTokenService refreshTokenService;
 
-    // reg
     @PostMapping("/register")
-    public ResponseEntity<UserResponse> register(@Valid @RequestBody RegisterRequest request) {
+    public ResponseEntity<ApiResponse<UserResponse>> register(@Valid @RequestBody RegisterRequest request) {
         UserResponse response = userService.register(request);
-        URI location = ServletUriComponentsBuilder.fromCurrentContextPath()
-                .path("/users/{id}").buildAndExpand(response.getId()).toUri();
         logger.info("User registered: username={}, id={}", response.getUsername(), response.getId());
-        return ResponseEntity.created(location).body(response);
+        return ResponseEntity
+                .status(HttpStatus.CREATED)
+                .body(ApiResponse.created(response));
     }
 
-    // login
     @PostMapping("/login")
-    public ResponseEntity<LoginResponse> login(
+    public ResponseEntity<ApiResponse<LoginResponse>> login(
             @Valid @RequestBody LoginRequest request,
             HttpServletResponse response
     ) {
@@ -68,70 +63,69 @@ public class AuthController {
         response.addHeader("Set-Cookie", accessCookie.toString());
         response.addHeader("Set-Cookie", refreshCookie.toString());
 
-        return ResponseEntity.ok(new LoginResponse(accessToken, refreshToken.getToken()));
+        return ResponseEntity.ok(ApiResponse.ok("Login successful",
+                new LoginResponse(accessToken, refreshToken.getToken())));
     }
 
-    // refr
     @PostMapping("/refresh")
-    public ResponseEntity<LoginResponse> refresh(@RequestParam String refreshToken) {
+    public ResponseEntity<ApiResponse<LoginResponse>> refresh(@RequestParam String refreshToken) {
         RefreshToken oldToken = refreshTokenService.validate(refreshToken);
         User user = userService.getById(oldToken.getUserId());
         refreshTokenService.revoke(oldToken.getToken());
         RefreshToken newToken = refreshTokenService.create(user.getId());
         String newAccessToken = jwtUtil.generateAccessToken(user);
         logger.info("Refresh token rotated for userId={}", user.getId());
-        return ResponseEntity.ok(new LoginResponse(newAccessToken, newToken.getToken()));
+        return ResponseEntity.ok(ApiResponse.ok("Token refreshed",
+                new LoginResponse(newAccessToken, newToken.getToken())));
     }
 
-    // out
     @PreAuthorize("isAuthenticated()")
     @PostMapping("/logout")
-    public ResponseEntity<Map<String, String>> logout() {
+    public ResponseEntity<ApiResponse<Void>> logout() {
         String username = SecurityContextHolder.getContext().getAuthentication().getName();
         User user = userService.getByUsername(username);
         refreshTokenService.revokeAll(user.getId());
         logger.info("User logged out: id={}, username={}", user.getId(), user.getUsername());
-        return ResponseEntity.ok(Map.of("message", "Logged out successfully"));
+        return ResponseEntity.ok(ApiResponse.<Void>builder()
+                .success(true).message("Logged out successfully").build());
     }
 
-    // me
     @PreAuthorize("isAuthenticated()")
     @GetMapping("/me")
-    public ResponseEntity<UserResponse> getMe(@AuthenticationPrincipal String username) {
+    public ResponseEntity<ApiResponse<UserResponse>> getMe(@AuthenticationPrincipal String username) {
         User user = userService.getByUsername(username);
-        return ResponseEntity.ok(userService.getProfile(user.getId()));
+        return ResponseEntity.ok(ApiResponse.ok(userService.getProfile(user.getId())));
     }
 
-    // upd
     @PreAuthorize("isAuthenticated()")
     @PutMapping("/me/profile")
-    public ResponseEntity<UserResponse> updateProfile(
+    public ResponseEntity<ApiResponse<UserResponse>> updateProfile(
             @AuthenticationPrincipal String username,
             @Valid @RequestBody UpdateProfileRequest request
     ) {
         User user = userService.getByUsername(username);
-        return ResponseEntity.ok(userService.updateProfile(user.getId(), request));
+        return ResponseEntity.ok(ApiResponse.ok("Profile updated", userService.updateProfile(user.getId(), request)));
     }
 
-    // pic
     @PreAuthorize("isAuthenticated()")
     @PutMapping(value = "/me/profile-image", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<UserResponse> updateProfileImage(
+    public ResponseEntity<ApiResponse<UserResponse>> updateProfileImage(
             @AuthenticationPrincipal String username,
             @RequestPart("file") MultipartFile file
     ) {
         User user = userService.getByUsername(username);
-        return ResponseEntity.ok(userService.updateProfileImage(user.getId(), file));
+        return ResponseEntity.ok(ApiResponse.ok("Profile image updated",
+                userService.updateProfileImage(user.getId(), file)));
     }
 
-    // bnr
     @PreAuthorize("isAuthenticated()")
     @PutMapping(value = "/me/banner-image", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<UserResponse> updateBannerImage(
+    public ResponseEntity<ApiResponse<UserResponse>> updateBannerImage(
             @AuthenticationPrincipal String username,
             @RequestPart("file") MultipartFile file
     ) {
         User user = userService.getByUsername(username);
-        return ResponseEntity.ok(userService.updateBannerImage(user.getId(), file));
+        return ResponseEntity.ok(ApiResponse.ok("Banner image updated",
+                userService.updateBannerImage(user.getId(), file)));
     }
 }

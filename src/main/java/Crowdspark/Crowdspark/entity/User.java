@@ -47,7 +47,8 @@ public class User {
 
     private boolean emailVerified;
     private boolean phoneVerified;
-    private boolean kycVerified;
+    @Column(name = "kyc_verified", columnDefinition = "boolean default false")
+    private boolean kycVerified = false;
     private boolean isEnabled = true;
     private boolean isLocked = false;
 

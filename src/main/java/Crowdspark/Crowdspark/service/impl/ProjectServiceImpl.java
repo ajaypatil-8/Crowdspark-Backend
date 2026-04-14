@@ -14,8 +14,10 @@ import Crowdspark.Crowdspark.repository.ProjectRepository;
 import Crowdspark.Crowdspark.repository.UserRepository;
 import Crowdspark.Crowdspark.service.ProjectService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 import Crowdspark.Crowdspark.entity.type.MediaUsage;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
@@ -43,6 +45,7 @@ public class ProjectServiceImpl implements ProjectService {
         if (categories.isEmpty()) {
             throw new RuntimeException("Invalid categories");
         }
+
         // 3. Create project
         Project project = new Project();
         project.setTitle(request.getTitle());
@@ -67,7 +70,8 @@ public class ProjectServiceImpl implements ProjectService {
             media.setDisplayOrder(mediaReq.getDisplayOrder());
             media.setProject(project);
 
-            if (mediaReq.getUsage().name().equals("THUMBNAIL")) {
+            // FIX: use enum comparison instead of fragile .name().equals()
+            if (mediaReq.getUsage() == MediaUsage.THUMBNAIL) {
                 hasThumbnail = true;
             }
 
@@ -104,19 +108,21 @@ public class ProjectServiceImpl implements ProjectService {
                 }
             }
 
-            // funded %
-            int fundedPercent = (int) ((project.getCurrentAmount() / project.getGoalAmount()) * 100);
+            // FIX: guard against division by zero
+            int fundedPercent = project.getGoalAmount() > 0
+                    ? (int) ((project.getCurrentAmount() / project.getGoalAmount()) * 100)
+                    : 0;
 
             // days left
             long daysLeft = ChronoUnit.DAYS.between(
                     LocalDateTime.now(),
                     project.getDeadline()
             );
+
             // get first category name
             String categoryName = project.getCategories().isEmpty()
                     ? null
                     : project.getCategories().get(0).getName();
-
 
             return ProjectFeedResponse.builder()
                     .id(project.getId())
@@ -180,11 +186,13 @@ public class ProjectServiceImpl implements ProjectService {
     @Override
     public ProjectFullDetailsResponse getProjectDetails(Long projectId) {
 
+        // FIX: return proper 404 instead of 500 RuntimeException
         Project project = projectRepository.findById(projectId)
-                .orElseThrow(() -> new RuntimeException("Project not found"));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Project not found"));
 
+        // FIX: return 404 (not 500) for non-approved projects
         if (project.getStatus() != ProjectStatus.APPROVED) {
-            throw new RuntimeException("Project not available");
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Project not available");
         }
 
         // category
@@ -213,8 +221,10 @@ public class ProjectServiceImpl implements ProjectService {
                 storyImages.add(media.getMediaUrl());
         }
 
-        int fundedPercent =
-                (int)((project.getCurrentAmount() / project.getGoalAmount()) * 100);
+        // FIX: guard against division by zero
+        int fundedPercent = project.getGoalAmount() > 0
+                ? (int) ((project.getCurrentAmount() / project.getGoalAmount()) * 100)
+                : 0;
 
         long daysLeft = ChronoUnit.DAYS.between(
                 LocalDateTime.now(),
@@ -244,6 +254,4 @@ public class ProjectServiceImpl implements ProjectService {
                         .build())
                 .build();
     }
-
-
 }
