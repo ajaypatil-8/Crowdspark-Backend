@@ -78,6 +78,8 @@ public class SecurityConfig {
 
                         .requestMatchers("/api/notifications/**").authenticated()
 
+                        .requestMatchers(HttpMethod.GET, "/api/projects/*/rewards").permitAll()
+
                         .anyRequest().authenticated()
                 )
 

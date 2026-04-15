@@ -28,6 +28,7 @@ public class ProjectFullDetailsResponse {
     private List<String> previewVideos;
     private List<String> galleryImages;
     private List<String> storyImages;
+    private List<RewardTierResponse> rewards;
 
     @Data
     @Builder
