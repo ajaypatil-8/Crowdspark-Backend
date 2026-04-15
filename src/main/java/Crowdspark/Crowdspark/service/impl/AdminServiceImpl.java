@@ -7,6 +7,7 @@ import Crowdspark.Crowdspark.entity.type.MediaUsage;
 import Crowdspark.Crowdspark.entity.type.ProjectStatus;
 import Crowdspark.Crowdspark.repository.ProjectRepository;
 import Crowdspark.Crowdspark.service.AdminService;
+import Crowdspark.Crowdspark.service.NotificationService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -18,6 +19,7 @@ import java.util.List;
 public class AdminServiceImpl implements AdminService {
 
     private final ProjectRepository projectRepository;
+    private final NotificationService notificationService;
 
     @Override
     public List<AdminProjectListResponse> getPendingProjects() {
@@ -62,6 +64,7 @@ public class AdminServiceImpl implements AdminService {
         project.setApprovedAt(LocalDateTime.now());
 
         projectRepository.save(project);
+        notificationService.notifyCreatorProjectApproved(project);
     }
 
     @Override
@@ -78,6 +81,7 @@ public class AdminServiceImpl implements AdminService {
         project.setRejectionReason(reason);
 
         projectRepository.save(project);
+        notificationService.notifyCreatorProjectRejected(project, reason);
     }
 
 

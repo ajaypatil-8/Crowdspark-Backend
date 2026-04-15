@@ -76,6 +76,8 @@ public class SecurityConfig {
 
                         .requestMatchers("/admin/**").hasRole("ADMIN")
 
+                        .requestMatchers("/api/notifications/**").authenticated()
+
                         .anyRequest().authenticated()
                 )
 

@@ -14,6 +14,7 @@ import Crowdspark.Crowdspark.repository.UserRepository;
 import Crowdspark.Crowdspark.service.AuditLogService;
 import Crowdspark.Crowdspark.service.EmailService;
 import Crowdspark.Crowdspark.service.KycService;
+import Crowdspark.Crowdspark.service.NotificationService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -32,6 +33,7 @@ public class KycServiceImpl implements KycService {
     private final KycDocumentRepository kycDocumentRepository;
     private final EmailService emailService;
     private final AuditLogService auditLogService;
+    private final NotificationService notificationService;
 
     @Override
     @Transactional
@@ -219,6 +221,7 @@ public class KycServiceImpl implements KycService {
                     kyc.getBankAccountNumber().substring(kyc.getBankAccountNumber().length() - 4));
         }
         userRepository.save(user);
+        notificationService.notifyUserKycApproved(user);
 
         // Notify user via email
         emailService.sendSimpleEmail(
@@ -261,6 +264,7 @@ public class KycServiceImpl implements KycService {
         user.setKycStatus(KycStatus.PENDING_SUBMISSION);
         user.setKycVerified(false);
         userRepository.save(user);
+        notificationService.notifyUserKycRejected(user, reason);
 
         // Notify user via email
         emailService.sendSimpleEmail(
