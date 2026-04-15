@@ -71,6 +71,9 @@ public class SecurityConfig {
                                 "/api/projects/creator/**"
                         ).hasRole("CREATOR")
 
+                        // Section 4 — Backer Dashboard
+                        .requestMatchers("/api/backer/**").authenticated()
+
                         .requestMatchers("/admin/**").hasRole("ADMIN")
 
                         .anyRequest().authenticated()

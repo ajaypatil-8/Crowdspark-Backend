@@ -3,7 +3,11 @@ package Crowdspark.Crowdspark.repository;
 import Crowdspark.Crowdspark.entity.Project;
 import Crowdspark.Crowdspark.entity.type.ProjectStatus;
 import Crowdspark.Crowdspark.entity.User;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import java.util.List;
 
@@ -21,4 +25,20 @@ public interface ProjectRepository extends JpaRepository<Project, Long> {
     long countByCreator(User creator);
 
     long countByCreatorAndStatus(User creator, ProjectStatus status);
+
+    // Section 3 — Explore with optional category + keyword filter
+    @Query("""
+        SELECT DISTINCT p FROM Project p
+        LEFT JOIN p.categories c
+        WHERE p.status = 'APPROVED'
+        AND (:categoryId IS NULL OR c.id = :categoryId)
+        AND (:keyword IS NULL
+             OR LOWER(p.title) LIKE LOWER(CONCAT('%', :keyword, '%'))
+             OR LOWER(p.shortDescription) LIKE LOWER(CONCAT('%', :keyword, '%')))
+    """)
+    Page<Project> findForExplore(
+        @Param("categoryId") Long categoryId,
+        @Param("keyword") String keyword,
+        Pageable pageable
+    );
 }

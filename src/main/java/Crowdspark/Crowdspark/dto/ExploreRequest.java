@@ -1,11 +1,20 @@
 package Crowdspark.Crowdspark.dto;
 
-import lombok.*;
+import lombok.Data;
 
-@Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
+@Data
 public class ExploreRequest {
+
+    // filter by category (optional)
     private Long categoryId;
-    @Builder.Default private String sort = "newest";
-    @Builder.Default private int page = 0;
-    @Builder.Default private int size = 12;
+
+    // keyword search on title/shortDescription (optional)
+    private String keyword;
+
+    // sort: NEWEST | TRENDING | MOST_FUNDED
+    private String sort = "NEWEST";
+
+    // pagination
+    private int page = 0;
+    private int size = 12;
 }

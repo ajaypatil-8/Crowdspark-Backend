@@ -5,6 +5,7 @@ import Crowdspark.Crowdspark.dto.CreatorProjectResponse;
 import Crowdspark.Crowdspark.dto.ExploreRequest;
 import Crowdspark.Crowdspark.dto.ProjectFeedResponse;
 import Crowdspark.Crowdspark.dto.ProjectFullDetailsResponse;
+import org.springframework.data.domain.Page;
 
 import java.util.List;
 
@@ -18,6 +19,6 @@ public interface ProjectService {
 
     ProjectFullDetailsResponse getProjectDetails(Long projectId);
 
-    List<ProjectFeedResponse> exploreProjects(ExploreRequest request);
-
+    // Section 3 — Explore/Search
+    Page<ProjectFeedResponse> exploreProjects(ExploreRequest request);
 }
