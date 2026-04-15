@@ -52,7 +52,9 @@ public class SecurityConfig {
                                 "/auth/login",
                                 "/auth/refresh",
                                 "/api/projects/feed",
-                                "/api/projects/{id}"
+                                "/api/projects/{id}",
+                                "/api/projects/explore",
+                                "/api/categories"
                         ).permitAll()
 
                         .requestMatchers(
