@@ -19,7 +19,10 @@ import java.util.Set;
 @NoArgsConstructor
 @Entity
 @EntityListeners(AuditingEntityListener.class)
-@Table(name = "users")
+@Table(name = "users", indexes = {
+        @Index(name = "idx_users_account_status", columnList = "account_status"),
+        @Index(name = "idx_users_kyc_status",     columnList = "kyc_status")
+})
 public class User {
 
 

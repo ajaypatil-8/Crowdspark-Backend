@@ -1,11 +1,13 @@
 package Crowdspark.Crowdspark.dto;
 
+import java.io.Serializable;
 import lombok.Builder;
+import java.io.Serializable;
 import lombok.Data;
 
 @Data
 @Builder
-public class ProjectFeedResponse {
+public class ProjectFeedResponse implements Serializable {
 
     private Long id;
     private String title;

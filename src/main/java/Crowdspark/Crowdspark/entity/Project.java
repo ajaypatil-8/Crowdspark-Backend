@@ -15,7 +15,10 @@ import java.util.List;
 @NoArgsConstructor
 @Entity
 @EntityListeners(AuditingEntityListener.class)
-@Table(name = "projects")
+@Table(name = "projects", indexes = {
+        @Index(name = "idx_projects_status_created_at", columnList = "status, created_at"),
+        @Index(name = "idx_projects_creator_id",        columnList = "creator_id")
+})
 public class Project {
 
     @Id

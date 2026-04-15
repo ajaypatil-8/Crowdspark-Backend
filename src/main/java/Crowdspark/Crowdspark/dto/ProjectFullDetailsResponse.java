@@ -1,6 +1,8 @@
 package Crowdspark.Crowdspark.dto;
 
+import java.io.Serializable;
 import lombok.Builder;
+import java.io.Serializable;
 import lombok.Data;
 
 import java.time.LocalDateTime;
@@ -8,7 +10,7 @@ import java.util.List;
 
 @Data
 @Builder
-public class ProjectFullDetailsResponse {
+public class ProjectFullDetailsResponse implements Serializable {
 
     private Long id;
     private String title;

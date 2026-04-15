@@ -16,6 +16,8 @@ import Crowdspark.Crowdspark.repository.ProjectRepository;
 import Crowdspark.Crowdspark.repository.UserRepository;
 import Crowdspark.Crowdspark.service.ProjectService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -40,6 +42,7 @@ public class ProjectServiceImpl implements ProjectService {
 
     @Override
     @Transactional
+    @CacheEvict(value = {"exploreFeed", "projectDetails"}, allEntries = true)
     public Long createProject(CreateProjectRequest request, Long creatorId) {
 
         User creator = userRepository.findById(creatorId)
@@ -85,6 +88,7 @@ public class ProjectServiceImpl implements ProjectService {
     }
 
     @Override
+    @Cacheable(value = "exploreFeed", key = "'feed'")
     public List<ProjectFeedResponse> getProjectFeed() {
         List<Project> projects =
                 projectRepository.findByStatusOrderByCreatedAtDesc(ProjectStatus.APPROVED);
@@ -118,6 +122,7 @@ public class ProjectServiceImpl implements ProjectService {
     }
 
     @Override
+    @Cacheable(value = "projectDetails", key = "#projectId")
     public ProjectFullDetailsResponse getProjectDetails(Long projectId) {
         Project project = projectRepository.findById(projectId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Project not found"));
@@ -169,8 +174,8 @@ public class ProjectServiceImpl implements ProjectService {
                 .build();
     }
 
-    // Section 3 — Explore/Search
     @Override
+    @Cacheable(value = "exploreFeed", key = "#request.categoryId + '-' + #request.keyword + '-' + #request.sort + '-' + #request.page")
     public Page<ProjectFeedResponse> exploreProjects(ExploreRequest request) {
 
         Sort sort = switch (request.getSort().toUpperCase()) {
@@ -189,7 +194,11 @@ public class ProjectServiceImpl implements ProjectService {
                 .map(this::toFeedResponse);
     }
 
-    // ── shared mapper ──────────────────────────────────────────────────────────
+    // ── evict project cache when admin approves/rejects ───────────────────────
+    @CacheEvict(value = {"projectDetails", "exploreFeed"}, allEntries = true)
+    public void evictProjectCaches() { }
+
+    // ── shared mapper ─────────────────────────────────────────────────────────
     private ProjectFeedResponse toFeedResponse(Project project) {
         String thumbnail = null;
         String previewVideo = null;

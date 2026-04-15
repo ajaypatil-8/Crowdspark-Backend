@@ -8,6 +8,7 @@ import Crowdspark.Crowdspark.entity.type.ProjectStatus;
 import Crowdspark.Crowdspark.repository.ProjectRepository;
 import Crowdspark.Crowdspark.service.AdminService;
 import Crowdspark.Crowdspark.service.NotificationService;
+import org.springframework.cache.annotation.CacheEvict;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -51,6 +52,7 @@ public class AdminServiceImpl implements AdminService {
         }).toList();
     }
     @Override
+    @CacheEvict(value = {"projectDetails", "exploreFeed"}, allEntries = true)
     public void approveProject(Long projectId) {
 
         Project project = projectRepository.findById(projectId)
@@ -68,6 +70,7 @@ public class AdminServiceImpl implements AdminService {
     }
 
     @Override
+    @CacheEvict(value = {"projectDetails", "exploreFeed"}, allEntries = true)
     public void rejectProject(Long projectId, String reason) {
 
         Project project = projectRepository.findById(projectId)

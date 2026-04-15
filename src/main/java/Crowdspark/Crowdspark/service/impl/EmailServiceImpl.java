@@ -3,6 +3,7 @@ package Crowdspark.Crowdspark.service.impl;
 import Crowdspark.Crowdspark.service.EmailService;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -16,6 +17,7 @@ public class EmailServiceImpl implements EmailService {
 
     // OTP
     @Override
+    @Async("emailTaskExecutor")
     public void sendOtpEmail(String toEmail, String name, String otp) {
         SimpleMailMessage message = new SimpleMailMessage();
         message.setTo(toEmail);
@@ -26,6 +28,7 @@ public class EmailServiceImpl implements EmailService {
 
     // mail
     @Override
+    @Async("emailTaskExecutor")
     public void sendSimpleEmail(String toEmail, String subject, String body) {
         SimpleMailMessage message = new SimpleMailMessage();
         message.setTo(toEmail);
