@@ -2,6 +2,7 @@ package Crowdspark.Crowdspark.service.impl;
 
 import Crowdspark.Crowdspark.dto.CreateProjectRequest;
 import Crowdspark.Crowdspark.dto.CreatorProjectResponse;
+import Crowdspark.Crowdspark.dto.ExploreRequest;
 import Crowdspark.Crowdspark.dto.ProjectFeedResponse;
 import Crowdspark.Crowdspark.dto.ProjectFullDetailsResponse;
 import Crowdspark.Crowdspark.entity.Category;
@@ -253,5 +254,53 @@ public class ProjectServiceImpl implements ProjectService {
                         .about(null)
                         .build())
                 .build();
+    }
+
+    @Override
+    public List<ProjectFeedResponse> exploreProjects(ExploreRequest req) {
+        List<Project> projects = new java.util.ArrayList<>(
+                projectRepository.findByStatusOrderByCreatedAtDesc(ProjectStatus.APPROVED));
+
+        if (req.getCategoryId() != null) {
+        projects.removeIf(p -> p.getCategories().stream().noneMatch(c -> c.getId().equals(req.getCategoryId())));
+        }
+
+        switch (req.getSort()) {
+            case "most_funded" -> projects.sort((a, b) -> Double.compare(b.getCurrentAmount(), a.getCurrentAmount()));
+            case "trending"    -> projects.sort((a, b) -> {
+                double ra = a.getGoalAmount() > 0 ? a.getCurrentAmount() / a.getGoalAmount() : 0;
+                double rb = b.getGoalAmount() > 0 ? b.getCurrentAmount() / b.getGoalAmount() : 0;
+                return Double.compare(rb, ra);
+            });
+            default            -> projects.sort((a, b) -> b.getCreatedAt().compareTo(a.getCreatedAt()));
+        }
+
+        int from = req.getPage() * req.getSize();
+        int to   = Math.min(from + req.getSize(), projects.size());
+        if (from >= projects.size()) return java.util.List.of();
+
+        return projects.subList(from, to).stream().map(project -> {
+            String thumbnail = null;
+            String previewVideo = null;
+            for (Crowdspark.Crowdspark.entity.ProjectMedia media : project.getMedia()) {
+                if (media.getUsage() == Crowdspark.Crowdspark.entity.type.MediaUsage.THUMBNAIL) thumbnail = media.getMediaUrl();
+                if (media.getUsage() == Crowdspark.Crowdspark.entity.type.MediaUsage.CARD_VIDEO) previewVideo = media.getMediaUrl();
+            }
+            int fundedPercent = project.getGoalAmount() > 0
+                    ? (int) ((project.getCurrentAmount() / project.getGoalAmount()) * 100) : 0;
+            long daysLeft = java.time.temporal.ChronoUnit.DAYS.between(LocalDateTime.now(), project.getDeadline());
+            String categoryName = project.getCategories().isEmpty() ? null : project.getCategories().get(0).getName();
+            return ProjectFeedResponse.builder()
+                    .id(project.getId()).title(project.getTitle())
+                    .shortDescription(project.getShortDescription())
+                    .category(categoryName).thumbnailUrl(thumbnail).previewVideoUrl(previewVideo)
+                    .goalAmount(project.getGoalAmount()).currentAmount(project.getCurrentAmount())
+                    .fundedPercentage(fundedPercent).daysLeft((int) daysLeft).backersCount(0L)
+                    .creator(ProjectFeedResponse.CreatorDto.builder()
+                            .id(project.getCreator().getId()).username(project.getCreator().getUsername())
+                            .profileImage(null).about(null).joinedAt(null).totalProjects(0L).totalBackers(0L)
+                            .build())
+                    .build();
+        }).toList();
     }
 }

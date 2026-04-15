@@ -2,6 +2,7 @@ package Crowdspark.Crowdspark.service;
 
 import Crowdspark.Crowdspark.dto.CreateProjectRequest;
 import Crowdspark.Crowdspark.dto.CreatorProjectResponse;
+import Crowdspark.Crowdspark.dto.ExploreRequest;
 import Crowdspark.Crowdspark.dto.ProjectFeedResponse;
 import Crowdspark.Crowdspark.dto.ProjectFullDetailsResponse;
 
@@ -16,5 +17,7 @@ public interface ProjectService {
     List<CreatorProjectResponse> getCreatorProjects(Long creatorId);
 
     ProjectFullDetailsResponse getProjectDetails(Long projectId);
+
+    List<ProjectFeedResponse> exploreProjects(ExploreRequest request);
 
 }
