@@ -11,8 +11,11 @@ import Crowdspark.Crowdspark.entity.ProjectMedia;
 import Crowdspark.Crowdspark.entity.User;
 import Crowdspark.Crowdspark.entity.type.MediaUsage;
 import Crowdspark.Crowdspark.entity.type.ProjectStatus;
+import Crowdspark.Crowdspark.dto.RewardTierResponse;
+import Crowdspark.Crowdspark.entity.RewardTier;
 import Crowdspark.Crowdspark.repository.CategoryRepository;
 import Crowdspark.Crowdspark.repository.ProjectRepository;
+import Crowdspark.Crowdspark.repository.RewardTierRepository;
 import Crowdspark.Crowdspark.repository.UserRepository;
 import Crowdspark.Crowdspark.service.ProjectService;
 import lombok.RequiredArgsConstructor;
@@ -39,6 +42,7 @@ public class ProjectServiceImpl implements ProjectService {
     private final ProjectRepository projectRepository;
     private final UserRepository userRepository;
     private final CategoryRepository categoryRepository;
+    private final RewardTierRepository rewardTierRepository;
 
     @Override
     @Transactional
@@ -150,6 +154,16 @@ public class ProjectServiceImpl implements ProjectService {
                 ? (int) ((project.getCurrentAmount() / project.getGoalAmount()) * 100) : 0;
         long daysLeft = ChronoUnit.DAYS.between(LocalDateTime.now(), project.getDeadline());
 
+        List<RewardTier> tiers = rewardTierRepository.findByProject_Id(projectId);
+        List<RewardTierResponse> rewards = tiers.stream()
+                .map(t -> RewardTierResponse.builder()
+                        .id(t.getId())
+                        .title(t.getTitle())
+                        .description(t.getDescription())
+                        .minimumAmount(t.getMinimumAmount())
+                        .build())
+                .toList();
+
         return ProjectFullDetailsResponse.builder()
                 .id(project.getId())
                 .title(project.getTitle())
@@ -165,6 +179,7 @@ public class ProjectServiceImpl implements ProjectService {
                 .previewVideos(previewVideos)
                 .galleryImages(galleryImages)
                 .storyImages(storyImages)
+                .rewards(rewards)
                 .creator(ProjectFullDetailsResponse.CreatorDto.builder()
                         .id(project.getCreator().getId())
                         .username(project.getCreator().getUsername())
@@ -186,8 +201,12 @@ public class ProjectServiceImpl implements ProjectService {
 
         Pageable pageable = PageRequest.of(request.getPage(), request.getSize(), sort);
 
+        // Pre-process: lowercase + wrap wildcards — avoids lower(bytea) PostgreSQL error
         String keyword = (request.getKeyword() == null || request.getKeyword().isBlank())
-                ? null : request.getKeyword().trim();
+                ? null : "%" + request.getKeyword().trim().toLowerCase() + "%";
+
+
+
 
         return projectRepository
                 .findForExplore(request.getCategoryId(), keyword, pageable)
