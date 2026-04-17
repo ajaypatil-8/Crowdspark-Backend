@@ -2,8 +2,10 @@ package Crowdspark.Crowdspark.controller;
 
 import Crowdspark.Crowdspark.dto.AdminKycAction;
 import Crowdspark.Crowdspark.dto.AdminProjectListResponse;
+import Crowdspark.Crowdspark.dto.ApiResponse;
 import Crowdspark.Crowdspark.dto.KycStatusResponse;
 import Crowdspark.Crowdspark.dto.RejectProjectRequest;
+import Crowdspark.Crowdspark.dto.UserResponse;
 import Crowdspark.Crowdspark.entity.User;
 import Crowdspark.Crowdspark.service.AdminService;
 import Crowdspark.Crowdspark.service.KycService;
@@ -26,65 +28,100 @@ public class AdminController {
     private final KycService kycService;
     private final UserService userService;
 
-
+    // ─── Projects ─────────────────────────────────────────────────────────────
 
     @PreAuthorize("hasRole('ADMIN')")
     @GetMapping("/projects/pending")
-    public List<AdminProjectListResponse> getPendingProjects() {
-        return adminService.getPendingProjects();
+    public ResponseEntity<ApiResponse<List<AdminProjectListResponse>>> getPendingProjects() {
+        return ResponseEntity.ok(ApiResponse.ok(adminService.getPendingProjects()));
+    }
+
+    /** GET /admin/projects/all — see every project with status */
+    @PreAuthorize("hasRole('ADMIN')")
+    @GetMapping("/projects/all")
+    public ResponseEntity<ApiResponse<List<AdminProjectListResponse>>> getAllProjects() {
+        return ResponseEntity.ok(ApiResponse.ok(adminService.getAllProjects()));
     }
 
     @PreAuthorize("hasRole('ADMIN')")
     @PutMapping("/projects/{id}/approve")
-    public String approveProject(@PathVariable Long id) {
+    public ResponseEntity<ApiResponse<Void>> approveProject(@PathVariable Long id) {
         adminService.approveProject(id);
-        return "Project approved successfully";
+        return ResponseEntity.ok(ApiResponse.<Void>builder()
+                .success(true).message("Project approved successfully").build());
     }
 
     @PreAuthorize("hasRole('ADMIN')")
     @PutMapping("/projects/{id}/reject")
-    public String rejectProject(
+    public ResponseEntity<ApiResponse<Void>> rejectProject(
             @PathVariable Long id,
             @Valid @RequestBody RejectProjectRequest request
     ) {
         adminService.rejectProject(id, request.getReason());
-        return "Project rejected successfully";
+        return ResponseEntity.ok(ApiResponse.<Void>builder()
+                .success(true).message("Project rejected").build());
     }
 
+    // ─── KYC ──────────────────────────────────────────────────────────────────
 
     @PreAuthorize("hasRole('ADMIN')")
     @GetMapping("/kyc/pending")
-    public ResponseEntity<List<KycStatusResponse>> getPendingKyc() {
-        return ResponseEntity.ok(kycService.getPendingKyc());
+    public ResponseEntity<ApiResponse<List<KycStatusResponse>>> getPendingKyc() {
+        return ResponseEntity.ok(ApiResponse.ok(kycService.getPendingKyc()));
     }
-
 
     @PreAuthorize("hasRole('ADMIN')")
     @GetMapping("/kyc/{userId}")
-    public ResponseEntity<KycStatusResponse> getUserKyc(@PathVariable Long userId) {
-        return ResponseEntity.ok(kycService.getMyKycStatus(userId));
+    public ResponseEntity<ApiResponse<KycStatusResponse>> getUserKyc(@PathVariable Long userId) {
+        return ResponseEntity.ok(ApiResponse.ok(kycService.getMyKycStatus(userId)));
     }
-
 
     @PreAuthorize("hasRole('ADMIN')")
     @PutMapping("/kyc/{userId}/approve")
-    public ResponseEntity<KycStatusResponse> approveKyc(
+    public ResponseEntity<ApiResponse<KycStatusResponse>> approveKyc(
             @PathVariable Long userId,
             @AuthenticationPrincipal String adminUsername
     ) {
         User admin = userService.getByUsername(adminUsername);
-        return ResponseEntity.ok(kycService.approveKyc(userId, admin.getId()));
+        return ResponseEntity.ok(ApiResponse.ok("KYC approved", kycService.approveKyc(userId, admin.getId())));
     }
-
 
     @PreAuthorize("hasRole('ADMIN')")
     @PutMapping("/kyc/{userId}/reject")
-    public ResponseEntity<KycStatusResponse> rejectKyc(
+    public ResponseEntity<ApiResponse<KycStatusResponse>> rejectKyc(
             @PathVariable Long userId,
             @AuthenticationPrincipal String adminUsername,
             @RequestBody AdminKycAction action
     ) {
         User admin = userService.getByUsername(adminUsername);
-        return ResponseEntity.ok(kycService.rejectKyc(userId, admin.getId(), action.getRejectionReason()));
+        return ResponseEntity.ok(ApiResponse.ok("KYC rejected",
+                kycService.rejectKyc(userId, admin.getId(), action.getRejectionReason())));
+    }
+
+    // ─── Users ────────────────────────────────────────────────────────────────
+
+    /** GET /admin/users — list all users */
+    @PreAuthorize("hasRole('ADMIN')")
+    @GetMapping("/users")
+    public ResponseEntity<ApiResponse<List<UserResponse>>> getAllUsers() {
+        return ResponseEntity.ok(ApiResponse.ok(adminService.getAllUsers()));
+    }
+
+    /** PUT /admin/users/{id}/suspend */
+    @PreAuthorize("hasRole('ADMIN')")
+    @PutMapping("/users/{id}/suspend")
+    public ResponseEntity<ApiResponse<Void>> suspendUser(@PathVariable Long id) {
+        adminService.suspendUser(id);
+        return ResponseEntity.ok(ApiResponse.<Void>builder()
+                .success(true).message("User suspended").build());
+    }
+
+    /** PUT /admin/users/{id}/activate */
+    @PreAuthorize("hasRole('ADMIN')")
+    @PutMapping("/users/{id}/activate")
+    public ResponseEntity<ApiResponse<Void>> activateUser(@PathVariable Long id) {
+        adminService.activateUser(id);
+        return ResponseEntity.ok(ApiResponse.<Void>builder()
+                .success(true).message("User activated").build());
     }
 }

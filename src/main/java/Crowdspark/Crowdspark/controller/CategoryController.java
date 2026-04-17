@@ -1,32 +1,34 @@
 package Crowdspark.Crowdspark.controller;
 
+import Crowdspark.Crowdspark.dto.ApiResponse;
 import Crowdspark.Crowdspark.dto.CreateCategoryRequest;
 import Crowdspark.Crowdspark.entity.Category;
 import Crowdspark.Crowdspark.service.CategoryService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
 @RestController
-@RequestMapping("/categories")
+@RequestMapping("/api/categories")   // ✅ FIX: was "/categories" — frontend + SecurityConfig both expect /api/categories
 @RequiredArgsConstructor
 public class CategoryController {
 
     private final CategoryService categoryService;
 
-    // create category (admin later)
     @PreAuthorize("hasRole('ADMIN')")
     @PostMapping
-    public Category createCategory(@Valid @RequestBody CreateCategoryRequest request) {
-        return categoryService.createCategory(request.getName());
+    public ResponseEntity<ApiResponse<Category>> createCategory(
+            @Valid @RequestBody CreateCategoryRequest request) {
+        Category cat = categoryService.createCategory(request.getName());
+        return ResponseEntity.ok(ApiResponse.ok("Category created", cat));
     }
 
-    // get all categories (frontend dropdown)
     @GetMapping
-    public List<Category> getAll() {
-        return categoryService.getAllCategories();
+    public ResponseEntity<ApiResponse<List<Category>>> getAll() {
+        return ResponseEntity.ok(ApiResponse.ok(categoryService.getAllCategories()));
     }
 }

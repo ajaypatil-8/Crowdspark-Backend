@@ -51,11 +51,17 @@ public class SecurityConfig {
                                 "/auth/register",
                                 "/auth/login",
                                 "/auth/refresh",
+                                "/auth/verify-email",          // ✅ NEW: public — link in email, no token yet
                                 "/api/projects/feed",
                                 "/api/projects/{id}",
                                 "/api/projects/explore",
-                                "/api/categories"
+                                "/api/categories"              // ✅ already correct (CategoryController now at /api/categories)
                         ).permitAll()
+
+                        // ✅ send-verification-email requires auth (user must be logged in)
+                        .requestMatchers(
+                                "/auth/send-verification-email"
+                        ).authenticated()
 
                         .requestMatchers(
                                 "/api/creator/send-otp",
