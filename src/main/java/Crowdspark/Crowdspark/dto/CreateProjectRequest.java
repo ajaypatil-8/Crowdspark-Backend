@@ -6,6 +6,7 @@ import jakarta.validation.constraints.*;
 import lombok.Data;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 
 @Data
@@ -36,6 +37,8 @@ public class CreateProjectRequest {
 
     @NotEmpty
     private List<ProjectMediaRequest> media;
+
+    private List<RewardTierRequest> rewardTiers = new java.util.ArrayList<>();
 
     // ---- INNER DTO ----
     @Data

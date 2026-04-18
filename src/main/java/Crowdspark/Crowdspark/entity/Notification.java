@@ -15,7 +15,7 @@ import java.time.LocalDateTime;
 @EntityListeners(AuditingEntityListener.class)
 @Table(name = "notifications",
         indexes = {
-                @Index(name = "idx_notifications_user_id", columnList = "user_id"),
+                @Index(name = "idx_notifications_recipient_id", columnList = "recipient_id"),
                 @Index(name = "idx_notifications_is_read", columnList = "is_read")
         })
 public class Notification {
@@ -26,7 +26,7 @@ public class Notification {
 
     /** The user who receives this notification */
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "user_id", nullable = false)
+    @JoinColumn(name = "recipient_id", nullable = false)
     private User recipient;
 
     @Enumerated(EnumType.STRING)

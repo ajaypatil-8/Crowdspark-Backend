@@ -11,6 +11,7 @@ import Crowdspark.Crowdspark.entity.ProjectMedia;
 import Crowdspark.Crowdspark.entity.User;
 import Crowdspark.Crowdspark.entity.type.MediaUsage;
 import Crowdspark.Crowdspark.entity.type.ProjectStatus;
+import Crowdspark.Crowdspark.dto.RewardTierRequest;
 import Crowdspark.Crowdspark.dto.RewardTierResponse;
 import Crowdspark.Crowdspark.entity.RewardTier;
 import Crowdspark.Crowdspark.repository.CategoryRepository;
@@ -88,7 +89,21 @@ public class ProjectServiceImpl implements ProjectService {
             throw new RuntimeException("Project must have at least one THUMBNAIL image");
         }
 
-        return projectRepository.save(project).getId();
+        Project saved = projectRepository.save(project);
+
+        // Save reward tiers if provided
+        if (request.getRewardTiers() != null && !request.getRewardTiers().isEmpty()) {
+            for (RewardTierRequest tierReq : request.getRewardTiers()) {
+                RewardTier tier = new RewardTier();
+                tier.setTitle(tierReq.getTitle());
+                tier.setDescription(tierReq.getDescription());
+                tier.setMinimumAmount(tierReq.getMinimumAmount());
+                tier.setProject(saved);
+                rewardTierRepository.save(tier);
+            }
+        }
+
+        return saved.getId();
     }
 
     @Override
