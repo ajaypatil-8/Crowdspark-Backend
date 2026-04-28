@@ -1,15 +1,20 @@
 package Crowdspark.Crowdspark.dto;
 
-import java.io.Serializable;
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
+import com.fasterxml.jackson.databind.annotation.JsonPOJOBuilder;
+import lombok.AllArgsConstructor;
 import lombok.Builder;
-import java.io.Serializable;
 import lombok.Data;
+import lombok.NoArgsConstructor;
 
+import java.io.Serializable;
 import java.time.LocalDateTime;
 import java.util.List;
 
 @Data
 @Builder
+@NoArgsConstructor
+@AllArgsConstructor
 public class ProjectFullDetailsResponse implements Serializable {
 
     private Long id;
@@ -34,7 +39,9 @@ public class ProjectFullDetailsResponse implements Serializable {
 
     @Data
     @Builder
-    public static class CreatorDto {
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class CreatorDto implements Serializable {
         private Long id;
         private String username;
         private String profileImage;

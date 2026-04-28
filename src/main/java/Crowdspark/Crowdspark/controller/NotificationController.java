@@ -23,10 +23,7 @@ public class NotificationController {
     private final NotificationService notificationService;
     private final UserService         userService;
 
-    /**
-     * GET /api/notifications?page=0&size=20
-     * Returns paginated notifications for logged-in user.
-     */
+    /** GET /api/notifications?page=0&size=20 */
     @GetMapping
     public ResponseEntity<ApiResponse<Page<NotificationResponse>>> getNotifications(
             @AuthenticationPrincipal String username,
@@ -35,14 +32,10 @@ public class NotificationController {
     ) {
         User user = userService.getByUsername(username);
         Pageable pageable = PageRequest.of(page, size);
-        Page<NotificationResponse> result = notificationService.getNotifications(user.getId(), pageable);
-        return ResponseEntity.ok(ApiResponse.ok(result));
+        return ResponseEntity.ok(ApiResponse.ok(notificationService.getNotifications(user.getId(), pageable)));
     }
 
-    /**
-     * GET /api/notifications/unread-count
-     * Returns number of unread notifications — used by notification bell badge.
-     */
+    /** GET /api/notifications/unread-count — used by notification bell badge */
     @GetMapping("/unread-count")
     public ResponseEntity<ApiResponse<Map<String, Long>>> getUnreadCount(
             @AuthenticationPrincipal String username
@@ -52,24 +45,17 @@ public class NotificationController {
         return ResponseEntity.ok(ApiResponse.ok(Map.of("unreadCount", count)));
     }
 
-    /**
-     * PUT /api/notifications/{id}/read
-     * Mark a single notification as read.
-     */
+    /** PUT /api/notifications/{id}/read */
     @PutMapping("/{id}/read")
     public ResponseEntity<ApiResponse<NotificationResponse>> markRead(
             @PathVariable Long id,
             @AuthenticationPrincipal String username
     ) {
         User user = userService.getByUsername(username);
-        NotificationResponse response = notificationService.markRead(id, user.getId());
-        return ResponseEntity.ok(ApiResponse.ok("Notification marked as read", response));
+        return ResponseEntity.ok(ApiResponse.ok("Marked as read", notificationService.markRead(id, user.getId())));
     }
 
-    /**
-     * PUT /api/notifications/read-all
-     * Mark ALL notifications as read.
-     */
+    /** PUT /api/notifications/read-all */
     @PutMapping("/read-all")
     public ResponseEntity<ApiResponse<Map<String, Integer>>> markAllRead(
             @AuthenticationPrincipal String username
@@ -77,5 +63,26 @@ public class NotificationController {
         User user = userService.getByUsername(username);
         int updated = notificationService.markAllRead(user.getId());
         return ResponseEntity.ok(ApiResponse.ok(Map.of("markedRead", updated)));
+    }
+
+    /** DELETE /api/notifications/{id} */
+    @DeleteMapping("/{id}")
+    public ResponseEntity<ApiResponse<Void>> deleteOne(
+            @PathVariable Long id,
+            @AuthenticationPrincipal String username
+    ) {
+        User user = userService.getByUsername(username);
+        notificationService.deleteNotification(id, user.getId());
+        return ResponseEntity.ok(ApiResponse.ok("Notification deleted", null));
+    }
+
+    /** DELETE /api/notifications/clear-all */
+    @DeleteMapping("/clear-all")
+    public ResponseEntity<ApiResponse<Void>> clearAll(
+            @AuthenticationPrincipal String username
+    ) {
+        User user = userService.getByUsername(username);
+        notificationService.deleteAllNotifications(user.getId());
+        return ResponseEntity.ok(ApiResponse.ok("All notifications cleared", null));
     }
 }

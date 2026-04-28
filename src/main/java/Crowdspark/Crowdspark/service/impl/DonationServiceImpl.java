@@ -6,9 +6,9 @@ import Crowdspark.Crowdspark.entity.Donation;
 import Crowdspark.Crowdspark.entity.Project;
 import Crowdspark.Crowdspark.entity.RewardTier;
 import Crowdspark.Crowdspark.entity.User;
+import Crowdspark.Crowdspark.entity.type.MediaUsage;
 import Crowdspark.Crowdspark.entity.type.PaymentStatus;
 import Crowdspark.Crowdspark.entity.type.ProjectStatus;
-import Crowdspark.Crowdspark.entity.type.MediaUsage;
 import Crowdspark.Crowdspark.repository.DonationRepository;
 import Crowdspark.Crowdspark.repository.ProjectRepository;
 import Crowdspark.Crowdspark.repository.RewardTierRepository;
@@ -16,6 +16,7 @@ import Crowdspark.Crowdspark.repository.UserRepository;
 import Crowdspark.Crowdspark.service.DonationService;
 import Crowdspark.Crowdspark.service.NotificationService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -28,14 +29,15 @@ import java.util.List;
 @RequiredArgsConstructor
 public class DonationServiceImpl implements DonationService {
 
-    private final DonationRepository donationRepository;
-    private final ProjectRepository projectRepository;
-    private final UserRepository userRepository;
-    private final RewardTierRepository rewardTierRepository;
-    private final NotificationService notificationService;
+    private final DonationRepository    donationRepository;
+    private final ProjectRepository     projectRepository;
+    private final UserRepository        userRepository;
+    private final RewardTierRepository  rewardTierRepository;
+    private final NotificationService   notificationService;
 
     @Override
     @Transactional
+    @CacheEvict(value = {"projectDetails", "exploreFeed"}, allEntries = true)
     public DonationResponse donate(CreateDonationRequest request, Long backerId) {
 
         // 1. Load backer
@@ -46,29 +48,53 @@ public class DonationServiceImpl implements DonationService {
         Project project = projectRepository.findById(request.getProjectId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Project not found"));
 
+        // ── GUARD: creator cannot back their own campaign ─────────────────────
+        if (project.getCreator().getId().equals(backerId)) {
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN, "You cannot back your own campaign");
+        }
+
+        // ── GUARD: project must be APPROVED ───────────────────────────────────
         if (project.getStatus() != ProjectStatus.APPROVED) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Project is not accepting donations");
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST, "Project is not accepting donations");
         }
 
+        // ── GUARD: deadline not passed ────────────────────────────────────────
         if (project.getDeadline().isBefore(LocalDateTime.now())) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Project funding deadline has passed");
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST, "Project funding deadline has passed");
         }
 
-        // 3. Optional reward tier
+        // ── GUARD: cap donation to remaining amount ───────────────────────────
+        double remaining = project.getGoalAmount() - project.getCurrentAmount();
+        if (remaining <= 0) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST, "This project has already reached its funding goal");
+        }
+        if (request.getAmount() > remaining) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    String.format("Amount exceeds remaining goal. Maximum you can contribute is ₹%.0f", remaining));
+        }
+
+        // 3. Optional reward tier validation
         RewardTier rewardTier = null;
         if (request.getRewardTierId() != null) {
             rewardTier = rewardTierRepository.findById(request.getRewardTierId())
                     .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Reward tier not found"));
             if (!rewardTier.getProject().getId().equals(project.getId())) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Reward tier does not belong to this project");
+                throw new ResponseStatusException(
+                        HttpStatus.BAD_REQUEST, "Reward tier does not belong to this project");
             }
             if (request.getAmount() < rewardTier.getMinimumAmount()) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                throw new ResponseStatusException(
+                        HttpStatus.BAD_REQUEST,
                         "Amount must be at least ₹" + rewardTier.getMinimumAmount() + " for this reward tier");
             }
         }
 
-        // 4. Build donation record (SUCCESS immediately — real payment gateway would set this async)
+        // 4. Build and save donation
         Donation donation = new Donation();
         donation.setBacker(backer);
         donation.setProject(project);
@@ -81,21 +107,29 @@ public class DonationServiceImpl implements DonationService {
 
         Donation saved = donationRepository.save(donation);
 
-        // 5. Increment project.currentAmount
-        project.setCurrentAmount(project.getCurrentAmount() + request.getAmount());
+        // 5. Update project.currentAmount
+        double newTotal = project.getCurrentAmount() + request.getAmount();
+        project.setCurrentAmount(newTotal);
+
+        // ── AUTO-CLOSE: goal reached → close campaign ─────────────────────────
+        if (newTotal >= project.getGoalAmount()) {
+            project.setStatus(ProjectStatus.CLOSED);
+            notificationService.notifyCreatorGoalReached(project);
+        }
+
         projectRepository.save(project);
 
-        // 6. Increment user stats
+        // 6. Update backer stats
         backer.setTotalProjectsBacked(backer.getTotalProjectsBacked() + 1);
         backer.setTotalAmountBacked(backer.getTotalAmountBacked() + request.getAmount());
         userRepository.save(backer);
 
-        // 7. Creator funds raised
+        // 7. Update creator funds raised
         User creator = project.getCreator();
         creator.setTotalFundsRaised(creator.getTotalFundsRaised() + request.getAmount());
         userRepository.save(creator);
 
-        // 8. Notify creator
+        // 8. Notify creator of new backer
         notificationService.notifyCreatorBacked(project, backer, request.getAmount());
 
         return toResponse(saved);
@@ -112,8 +146,6 @@ public class DonationServiceImpl implements DonationService {
         return donationRepository.findByProject_IdOrderByCreatedAtDesc(projectId)
                 .stream().map(this::toResponse).toList();
     }
-
-    // --- mapper ---
 
     private DonationResponse toResponse(Donation d) {
         String thumbnail = d.getProject().getMedia().stream()
