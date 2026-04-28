@@ -34,19 +34,28 @@ public class BackerServiceImpl implements BackerService {
         List<BackerDashboardResponse.BackedProjectDto> list = donations.stream()
                 .map(d -> {
 
-                    // thumbnail from project media
                     String thumbnail = d.getProject().getMedia().stream()
                             .filter(m -> m.getUsage() == MediaUsage.THUMBNAIL)
                             .map(ProjectMedia::getMediaUrl)
                             .findFirst()
                             .orElse(null);
 
+                    double goal    = d.getProject().getGoalAmount() != null ? d.getProject().getGoalAmount() : 0.0;
+                    double current = d.getProject().getCurrentAmount() != null ? d.getProject().getCurrentAmount() : 0.0;
+                    double pct     = goal > 0 ? Math.min((current / goal) * 100, 100) : 0;
+
                     return BackerDashboardResponse.BackedProjectDto.builder()
                             .donationId(d.getId())
                             .projectId(d.getProject().getId())
                             .projectTitle(d.getProject().getTitle())
-                            .projectThumbnailUrl(thumbnail)
-                            .projectStatus(d.getProject().getStatus().name())
+                            // FIX: renamed from projectThumbnailUrl → thumbnailUrl
+                            .thumbnailUrl(thumbnail)
+                            // FIX: renamed from projectStatus → status
+                            .status(d.getProject().getStatus().name())
+                            // NEW: progress fields
+                            .goalAmount(goal)
+                            .currentAmount(current)
+                            .fundedPercentage(pct)
                             .amountBacked(d.getAmount())
                             .paymentStatus(d.getPaymentStatus().name())
                             .rewardTierId(d.getRewardTier() != null ? d.getRewardTier().getId() : null)
@@ -58,7 +67,6 @@ public class BackerServiceImpl implements BackerService {
                 })
                 .toList();
 
-        // Use live DB totals (source of truth) rather than cached user fields
         Double totalAmount = donationRepository.sumSuccessfulByBacker(userId);
 
         return BackerDashboardResponse.builder()
