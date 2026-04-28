@@ -18,6 +18,11 @@ import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import Crowdspark.Crowdspark.dto.ProjectFullDetailsResponse;
+import Crowdspark.Crowdspark.dto.RewardTierResponse;
+import Crowdspark.Crowdspark.entity.RewardTier;
+import Crowdspark.Crowdspark.repository.RewardTierRepository;
+import java.time.temporal.ChronoUnit;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -29,6 +34,67 @@ public class AdminServiceImpl implements AdminService {
     private final UserRepository userRepository;
     private final NotificationService notificationService;
     private final ModelMapper modelMapper;
+    private final RewardTierRepository rewardTierRepository;
+
+    // ─── Project Detail (admin — no status restriction) ───────────────────────
+
+    @Override
+    public ProjectFullDetailsResponse getProjectDetail(Long projectId) {
+        Project project = projectRepository.findById(projectId)
+                .orElseThrow(() -> new RuntimeException("Project not found: " + projectId));
+
+        String categoryName = project.getCategories().isEmpty()
+                ? null : project.getCategories().get(0).getName();
+
+        String thumbnail = null;
+        List<String> previewVideos = new java.util.ArrayList<>();
+        List<String> galleryImages = new java.util.ArrayList<>();
+        List<String> storyImages   = new java.util.ArrayList<>();
+
+        for (ProjectMedia media : project.getMedia()) {
+            if (media.getUsage() == MediaUsage.THUMBNAIL)     thumbnail = media.getMediaUrl();
+            if (media.getUsage() == MediaUsage.CARD_VIDEO)    previewVideos.add(media.getMediaUrl());
+            if (media.getUsage() == MediaUsage.GALLERY_IMAGE) galleryImages.add(media.getMediaUrl());
+            if (media.getUsage() == MediaUsage.STORY_IMAGE)   storyImages.add(media.getMediaUrl());
+        }
+
+        int fundedPercent = project.getGoalAmount() > 0
+                ? (int) ((project.getCurrentAmount() / project.getGoalAmount()) * 100) : 0;
+        long daysLeft = ChronoUnit.DAYS.between(LocalDateTime.now(), project.getDeadline());
+
+        List<RewardTierResponse> rewards = rewardTierRepository.findByProject_Id(projectId)
+                .stream()
+                .map(t -> RewardTierResponse.builder()
+                        .id(t.getId()).title(t.getTitle())
+                        .description(t.getDescription()).minimumAmount(t.getMinimumAmount())
+                        .build())
+                .toList();
+
+        User creator = project.getCreator();
+        return ProjectFullDetailsResponse.builder()
+                .id(project.getId())
+                .title(project.getTitle())
+                .shortDescription(project.getShortDescription())
+                .fullDescription(project.getFullDescription())
+                .category(categoryName)
+                .goalAmount(project.getGoalAmount())
+                .currentAmount(project.getCurrentAmount())
+                .fundedPercentage(fundedPercent)
+                .daysLeft(daysLeft)
+                .deadline(project.getDeadline())
+                .thumbnailUrl(thumbnail)
+                .previewVideos(previewVideos)
+                .galleryImages(galleryImages)
+                .storyImages(storyImages)
+                .rewards(rewards)
+                .creator(ProjectFullDetailsResponse.CreatorDto.builder()
+                        .id(creator.getId())
+                        .username(creator.getUsername())
+                        .profileImage(creator.getProfileImageUrl())
+                        .about(creator.getBio())
+                        .build())
+                .build();
+    }
 
     // ─── Projects ─────────────────────────────────────────────────────────────
 

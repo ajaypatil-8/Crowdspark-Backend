@@ -107,7 +107,6 @@ public class ProjectServiceImpl implements ProjectService {
     }
 
     @Override
-    @Cacheable(value = "exploreFeed", key = "'feed'")
     public List<ProjectFeedResponse> getProjectFeed() {
         List<Project> projects =
                 projectRepository.findByStatusOrderByCreatedAtDesc(ProjectStatus.APPROVED);
@@ -205,7 +204,6 @@ public class ProjectServiceImpl implements ProjectService {
     }
 
     @Override
-    @Cacheable(value = "exploreFeed", key = "#request.categoryId + '-' + #request.keyword + '-' + #request.sort + '-' + #request.page")
     public Page<ProjectFeedResponse> exploreProjects(ExploreRequest request) {
 
         Sort sort = switch (request.getSort().toUpperCase()) {

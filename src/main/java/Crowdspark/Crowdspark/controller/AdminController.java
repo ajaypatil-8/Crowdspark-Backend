@@ -2,6 +2,7 @@ package Crowdspark.Crowdspark.controller;
 
 import Crowdspark.Crowdspark.dto.AdminKycAction;
 import Crowdspark.Crowdspark.dto.AdminProjectListResponse;
+import Crowdspark.Crowdspark.dto.ProjectFullDetailsResponse;
 import Crowdspark.Crowdspark.dto.ApiResponse;
 import Crowdspark.Crowdspark.dto.KycStatusResponse;
 import Crowdspark.Crowdspark.dto.RejectProjectRequest;
@@ -29,6 +30,13 @@ public class AdminController {
     private final UserService userService;
 
     // ─── Projects ─────────────────────────────────────────────────────────────
+
+    /** GET /admin/projects/{id} — full project detail for review */
+    @PreAuthorize("hasRole('ADMIN')")
+    @GetMapping("/projects/{id}")
+    public ResponseEntity<ApiResponse<ProjectFullDetailsResponse>> getProjectDetail(@PathVariable Long id) {
+        return ResponseEntity.ok(ApiResponse.ok(adminService.getProjectDetail(id)));
+    }
 
     @PreAuthorize("hasRole('ADMIN')")
     @GetMapping("/projects/pending")
