@@ -7,26 +7,31 @@ import Crowdspark.Crowdspark.dto.ExploreRequest;
 import Crowdspark.Crowdspark.dto.ProjectFeedResponse;
 import Crowdspark.Crowdspark.dto.ProjectFullDetailsResponse;
 import Crowdspark.Crowdspark.entity.User;
+import Crowdspark.Crowdspark.service.CloudinaryService;
 import Crowdspark.Crowdspark.service.ProjectService;
 import Crowdspark.Crowdspark.service.UserService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/projects")
 @RequiredArgsConstructor
 public class ProjectController {
 
-    private final ProjectService projectService;
-    private final UserService userService;
+    private final ProjectService      projectService;
+    private final UserService         userService;
+    private final CloudinaryService   cloudinaryService;
 
     @PreAuthorize("hasRole('CREATOR')")
     @PostMapping("/create")
@@ -66,5 +71,23 @@ public class ProjectController {
             @ModelAttribute ExploreRequest request
     ) {
         return ResponseEntity.ok(ApiResponse.ok(projectService.exploreProjects(request)));
+    }
+
+    /**
+     * POST /api/projects/upload-media
+     * Uploads image/video to Cloudinary under "crowdspark/projects" folder.
+     * Used by Step3Media in the campaign creation wizard.
+     * Returns: { secure_url, public_id, resource_type }
+     */
+    @PreAuthorize("hasRole('CREATOR')")
+    @PostMapping(value = "/upload-media", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<ApiResponse<Map<String, String>>> uploadMedia(
+            @RequestPart("file") MultipartFile file,
+            @AuthenticationPrincipal String username
+    ) {
+        Map<String, String> result = cloudinaryService.uploadFileWithDetails(
+                file, "crowdspark/projects"
+        );
+        return ResponseEntity.ok(ApiResponse.ok(result));
     }
 }
