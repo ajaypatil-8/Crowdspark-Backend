@@ -28,6 +28,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDateTime;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -187,6 +188,46 @@ public class AuthController {
         return ResponseEntity.ok(ApiResponse.<Void>builder()
                 .success(true).message("Verification email sent to " + user.getEmail()).build());
     }
+
+    /**
+     * BUG 3 FIX: Added missing forgot-password endpoint.
+     * POST /auth/forgot-password
+     * Always returns 200 regardless of whether email exists
+     * to prevent email enumeration attacks.
+     */
+    @PostMapping("/forgot-password")
+    public ResponseEntity<ApiResponse<String>> forgotPassword(@RequestBody Map<String, String> body) {
+        String email = body.get("email");
+        if (email != null && !email.isBlank()) {
+            try {
+                // Reuse OtpVerification table to store a password-reset token
+                otpRepository.deleteByEmail(email.trim());
+                String token = UUID.randomUUID().toString();
+                OtpVerification record = OtpVerification.builder()
+                        .email(email.trim())
+                        .otp(token)
+                        .expiryTime(LocalDateTime.now().plusHours(1))
+                        .build();
+                otpRepository.save(record);
+
+                String resetLink = "http://localhost:3000/reset-password?token=" + token + "&email=" + email.trim();
+                emailService.sendSimpleEmail(
+                        email.trim(),
+                        "Reset your CrowdSpark password",
+                        "Hi,\n\nClick the link below to reset your password:\n\n"
+                        + resetLink + "\n\nThis link expires in 1 hour.\n\n"
+                        + "If you didn't request this, ignore this email.\n\nTeam CrowdSpark"
+                );
+                logger.info("Password reset email requested for email={}", email.trim());
+            } catch (Exception e) {
+                // Swallow exceptions — never reveal if email exists
+                logger.warn("Password reset request failed silently for email={}", email);
+            }
+        }
+        // Always return 200 to prevent email enumeration
+        return ResponseEntity.ok(ApiResponse.ok("Reset link sent if account exists", "OK"));
+    }
+
 
     /**
      * GET /auth/verify-email?token=xxx&email=yyy
