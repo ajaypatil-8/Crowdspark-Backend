@@ -2,6 +2,7 @@ package Crowdspark.Crowdspark.config;
 
 import Crowdspark.Crowdspark.security.JwtAuthenticationFilter;
 import Crowdspark.Crowdspark.security.OAuth2SuccessHandler;
+import Crowdspark.Crowdspark.security.RestAuthenticationEntryPoint;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -28,6 +29,7 @@ public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
     private final OAuth2SuccessHandler oAuth2SuccessHandler;
+    private final RestAuthenticationEntryPoint restAuthEntryPoint;
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
@@ -89,6 +91,10 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/projects/*/rewards").permitAll()
 
                         .anyRequest().authenticated()
+                )
+
+                .exceptionHandling(ex -> ex
+                        .authenticationEntryPoint(restAuthEntryPoint)
                 )
 
                 .oauth2Login(oauth -> oauth
