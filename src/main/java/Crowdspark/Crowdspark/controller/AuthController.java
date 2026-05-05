@@ -23,6 +23,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
@@ -44,8 +45,9 @@ public class AuthController {
     private final UserService userService;
     private final JwtUtil jwtUtil;
     private final RefreshTokenService refreshTokenService;
-    private final EmailService emailService;        // ✅ NEW
-    private final OtpRepository otpRepository;      // ✅ NEW — reuse OtpVerification table for email tokens
+    private final EmailService emailService;
+    private final OtpRepository otpRepository;
+    private final PasswordEncoder passwordEncoder;
 
     @PostMapping("/register")
     public ResponseEntity<ApiResponse<UserResponse>> register(@Valid @RequestBody RegisterRequest request) {
@@ -177,11 +179,11 @@ public class AuthController {
                 user.getEmail(),
                 "Verify your CrowdSpark email",
                 "Hi " + user.getName() + ",\n\n"
-                + "Click the link below to verify your email address:\n\n"
-                + verifyLink + "\n\n"
-                + "This link expires in 24 hours.\n\n"
-                + "If you didn't request this, ignore this email.\n\n"
-                + "Team CrowdSpark"
+                        + "Click the link below to verify your email address:\n\n"
+                        + verifyLink + "\n\n"
+                        + "This link expires in 24 hours.\n\n"
+                        + "If you didn't request this, ignore this email.\n\n"
+                        + "Team CrowdSpark"
         );
 
         logger.info("Verification email sent to userId={}, email={}", user.getId(), user.getEmail());
@@ -215,8 +217,8 @@ public class AuthController {
                         email.trim(),
                         "Reset your CrowdSpark password",
                         "Hi,\n\nClick the link below to reset your password:\n\n"
-                        + resetLink + "\n\nThis link expires in 1 hour.\n\n"
-                        + "If you didn't request this, ignore this email.\n\nTeam CrowdSpark"
+                                + resetLink + "\n\nThis link expires in 1 hour.\n\n"
+                                + "If you didn't request this, ignore this email.\n\nTeam CrowdSpark"
                 );
                 logger.info("Password reset email requested for email={}", email.trim());
             } catch (Exception e) {
@@ -228,6 +230,51 @@ public class AuthController {
         return ResponseEntity.ok(ApiResponse.ok("Reset link sent if account exists", "OK"));
     }
 
+    /**
+     * POST /auth/reset-password
+     * Validates the reset token and sets a new password.
+     */
+    @PostMapping("/reset-password")
+    public ResponseEntity<ApiResponse<String>> resetPassword(@RequestBody Map<String, String> body) {
+        String email = body.get("email");
+        String token = body.get("token");
+        String newPassword = body.get("password");
+
+        if (email == null || token == null || newPassword == null
+                || email.isBlank() || token.isBlank() || newPassword.isBlank()) {
+            throw new AuthException("Missing required fields");
+        }
+        if (newPassword.length() < 8) {
+            throw new AuthException("Password must be at least 8 characters");
+        }
+
+        Optional<OtpVerification> recordOpt = otpRepository.findByEmail(email.trim());
+        if (recordOpt.isEmpty()) {
+            throw new AuthException("Invalid or expired reset link. Please request a new one.");
+        }
+
+        OtpVerification record = recordOpt.get();
+        if (!record.getOtp().equals(token)) {
+            throw new AuthException("Invalid reset token. Please request a new one.");
+        }
+        if (record.getExpiryTime().isBefore(LocalDateTime.now())) {
+            otpRepository.deleteByEmail(email.trim());
+            throw new AuthException("Reset link has expired. Please request a new one.");
+        }
+
+        // Update password
+        User user = userService.findByEmail(email.trim())
+                .orElseThrow(() -> new AuthException("User not found"));
+        user.setPassword(passwordEncoder.encode(newPassword));
+        userService.save(user);
+
+        // Cleanup token & revoke all refresh tokens for security
+        otpRepository.deleteByEmail(email.trim());
+        refreshTokenService.revokeAll(user.getId());
+
+        logger.info("Password reset successful for userId={}", user.getId());
+        return ResponseEntity.ok(ApiResponse.ok("Password reset successful", "OK"));
+    }
 
     /**
      * GET /auth/verify-email?token=xxx&email=yyy

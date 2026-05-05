@@ -57,7 +57,8 @@ public class SecurityConfig {
                                 "/api/projects/feed",
                                 "/api/projects/{id}",
                                 "/api/projects/explore",
-                                "/api/categories"              // ✅ already correct (CategoryController now at /api/categories)
+                                "/api/categories",
+                                "/auth/forgot-password"// ✅ already correct (CategoryController now at /api/categories)
                         ).permitAll()
 
                         // ✅ send-verification-email requires auth (user must be logged in)
