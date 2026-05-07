@@ -29,9 +29,7 @@ public class AdminController {
     private final KycService kycService;
     private final UserService userService;
 
-    // ─── Projects ─────────────────────────────────────────────────────────────
-
-    /** GET /admin/projects/{id} — full project detail for review */
+    // ─── Projects
     @PreAuthorize("hasRole('ADMIN')")
     @GetMapping("/projects/{id}")
     public ResponseEntity<ApiResponse<ProjectFullDetailsResponse>> getProjectDetail(@PathVariable Long id) {
@@ -44,7 +42,7 @@ public class AdminController {
         return ResponseEntity.ok(ApiResponse.ok(adminService.getPendingProjects()));
     }
 
-    /** GET /admin/projects/all — see every project with status */
+
     @PreAuthorize("hasRole('ADMIN')")
     @GetMapping("/projects/all")
     public ResponseEntity<ApiResponse<List<AdminProjectListResponse>>> getAllProjects() {
