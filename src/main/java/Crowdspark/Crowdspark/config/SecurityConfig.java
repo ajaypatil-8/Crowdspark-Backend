@@ -58,6 +58,7 @@ public class SecurityConfig {
                                 "/api/projects/{id}",
                                 "/api/projects/explore",
                                 "/api/categories",
+                                "/api/contact/messages",
                                 "/auth/reset-password" ,
                                 "/auth/forgot-password" // ✅ already correct (CategoryController now at /api/categories)
                         ).permitAll()

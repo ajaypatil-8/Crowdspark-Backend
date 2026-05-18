@@ -2,6 +2,8 @@ package Crowdspark.Crowdspark.controller;
 
 import Crowdspark.Crowdspark.dto.AdminKycAction;
 import Crowdspark.Crowdspark.dto.AdminProjectListResponse;
+import Crowdspark.Crowdspark.dto.ContactMessageReplyRequest;
+import Crowdspark.Crowdspark.dto.ContactMessageResponse;
 import Crowdspark.Crowdspark.dto.ProjectFullDetailsResponse;
 import Crowdspark.Crowdspark.dto.ApiResponse;
 import Crowdspark.Crowdspark.dto.KycStatusResponse;
@@ -9,6 +11,7 @@ import Crowdspark.Crowdspark.dto.RejectProjectRequest;
 import Crowdspark.Crowdspark.dto.UserResponse;
 import Crowdspark.Crowdspark.entity.User;
 import Crowdspark.Crowdspark.service.AdminService;
+import Crowdspark.Crowdspark.service.ContactMessageService;
 import Crowdspark.Crowdspark.service.KycService;
 import Crowdspark.Crowdspark.service.UserService;
 import jakarta.validation.Valid;
@@ -28,6 +31,7 @@ public class AdminController {
     private final AdminService adminService;
     private final KycService kycService;
     private final UserService userService;
+    private final ContactMessageService contactMessageService;
 
     // ─── Projects
     @PreAuthorize("hasRole('ADMIN')")
@@ -104,6 +108,31 @@ public class AdminController {
                 kycService.rejectKyc(userId, admin.getId(), action.getRejectionReason())));
     }
 
+
+    // ─── Contact Messages ────────────────────────────────────────────────────
+
+    @PreAuthorize("hasRole('ADMIN')")
+    @GetMapping("/contact-messages")
+    public ResponseEntity<ApiResponse<List<ContactMessageResponse>>> getContactMessages() {
+        return ResponseEntity.ok(ApiResponse.ok(contactMessageService.getAll()));
+    }
+
+    @PreAuthorize("hasRole('ADMIN')")
+    @PutMapping("/contact-messages/{id}/read")
+    public ResponseEntity<ApiResponse<ContactMessageResponse>> markContactMessageRead(@PathVariable Long id) {
+        return ResponseEntity.ok(ApiResponse.ok("Message marked read", contactMessageService.markRead(id)));
+    }
+
+    @PreAuthorize("hasRole('ADMIN')")
+    @PutMapping("/contact-messages/{id}/reply")
+    public ResponseEntity<ApiResponse<ContactMessageResponse>> replyContactMessage(
+            @PathVariable Long id,
+            @AuthenticationPrincipal String adminUsername,
+            @Valid @RequestBody ContactMessageReplyRequest request
+    ) {
+        User admin = userService.getByUsername(adminUsername);
+        return ResponseEntity.ok(ApiResponse.ok("Reply sent", contactMessageService.reply(id, request, admin.getId())));
+    }
     // ─── Users ────────────────────────────────────────────────────────────────
 
     /** GET /admin/users — list all users */
