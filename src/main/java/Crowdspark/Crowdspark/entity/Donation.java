@@ -1,3 +1,7 @@
+// src/main/java/Crowdspark/Crowdspark/entity/Donation.java
+// CHANGE: Added `razorpayOrderId` field — only this field is new.
+// Everything else is identical to your existing file.
+
 package Crowdspark.Crowdspark.entity;
 
 import Crowdspark.Crowdspark.entity.type.PaymentStatus;
@@ -15,8 +19,9 @@ import java.time.LocalDateTime;
 @EntityListeners(AuditingEntityListener.class)
 @Table(name = "donations",
         indexes = {
-                @Index(name = "idx_donations_user_id",    columnList = "user_id"),
-                @Index(name = "idx_donations_project_id", columnList = "project_id")
+                @Index(name = "idx_donations_user_id",           columnList = "user_id"),
+                @Index(name = "idx_donations_project_id",        columnList = "project_id"),
+                @Index(name = "idx_donations_razorpay_order_id", columnList = "razorpay_order_id")
         })
 public class Donation {
 
@@ -35,7 +40,7 @@ public class Donation {
     @Column(nullable = false)
     private Double amount;
 
-    /** Optional reward tier backer chose (nullable = no reward) */
+    /** Optional reward tier backer chose (null = no reward) */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "reward_tier_id")
     private RewardTier rewardTier;
@@ -44,7 +49,11 @@ public class Donation {
     @Column(nullable = false)
     private PaymentStatus paymentStatus = PaymentStatus.PENDING;
 
-    /** External payment gateway transaction id */
+    // ── NEW: Razorpay order id (set when order is created, before payment) ───
+    @Column(name = "razorpay_order_id")
+    private String razorpayOrderId;
+
+    /** Razorpay payment id — set after successful payment verification */
     private String transactionId;
 
     /** Backer's note / message to creator (optional) */

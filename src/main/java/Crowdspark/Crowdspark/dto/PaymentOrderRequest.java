@@ -1,0 +1,24 @@
+// src/main/java/Crowdspark/Crowdspark/dto/PaymentOrderRequest.java
+
+package Crowdspark.Crowdspark.dto;
+
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotNull;
+import lombok.Data;
+
+@Data
+public class PaymentOrderRequest {
+
+    @NotNull(message = "Project ID is required")
+    private Long projectId;
+
+    @NotNull(message = "Amount is required")
+    @Min(value = 1, message = "Minimum donation is ₹1")
+    private Double amount;
+
+    /** Optional reward tier */
+    private Long rewardTierId;
+
+    /** Optional message to creator */
+    private String message;
+}
