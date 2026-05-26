@@ -1,7 +1,5 @@
 package Crowdspark.Crowdspark.dto;
 
-import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
-import com.fasterxml.jackson.databind.annotation.JsonPOJOBuilder;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -28,6 +26,8 @@ public class ProjectFullDetailsResponse implements Serializable {
     private Integer fundedPercentage;
     private Long daysLeft;
     private LocalDateTime deadline;
+
+    private Long backersCount;      // ← ADDED
 
     private CreatorDto creator;
 

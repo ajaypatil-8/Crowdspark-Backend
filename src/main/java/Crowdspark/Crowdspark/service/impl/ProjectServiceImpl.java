@@ -10,11 +10,13 @@ import Crowdspark.Crowdspark.entity.Project;
 import Crowdspark.Crowdspark.entity.ProjectMedia;
 import Crowdspark.Crowdspark.entity.User;
 import Crowdspark.Crowdspark.entity.type.MediaUsage;
+import Crowdspark.Crowdspark.entity.type.PaymentStatus;
 import Crowdspark.Crowdspark.entity.type.ProjectStatus;
 import Crowdspark.Crowdspark.dto.RewardTierRequest;
 import Crowdspark.Crowdspark.dto.RewardTierResponse;
 import Crowdspark.Crowdspark.entity.RewardTier;
 import Crowdspark.Crowdspark.repository.CategoryRepository;
+import Crowdspark.Crowdspark.repository.DonationRepository;
 import Crowdspark.Crowdspark.repository.ProjectRepository;
 import Crowdspark.Crowdspark.repository.RewardTierRepository;
 import Crowdspark.Crowdspark.repository.UserRepository;
@@ -40,10 +42,11 @@ import java.util.List;
 @RequiredArgsConstructor
 public class ProjectServiceImpl implements ProjectService {
 
-    private final ProjectRepository projectRepository;
-    private final UserRepository userRepository;
-    private final CategoryRepository categoryRepository;
+    private final ProjectRepository    projectRepository;
+    private final UserRepository       userRepository;
+    private final CategoryRepository   categoryRepository;
     private final RewardTierRepository rewardTierRepository;
+    private final DonationRepository   donationRepository;   // ← ADDED
 
     @Override
     @Transactional
@@ -91,7 +94,6 @@ public class ProjectServiceImpl implements ProjectService {
 
         Project saved = projectRepository.save(project);
 
-        // Save reward tiers if provided
         if (request.getRewardTiers() != null && !request.getRewardTiers().isEmpty()) {
             for (RewardTierRequest tierReq : request.getRewardTiers()) {
                 RewardTier tier = new RewardTier();
@@ -155,7 +157,7 @@ public class ProjectServiceImpl implements ProjectService {
         String thumbnail = null;
         List<String> previewVideos = new ArrayList<>();
         List<String> galleryImages = new ArrayList<>();
-        List<String> storyImages = new ArrayList<>();
+        List<String> storyImages   = new ArrayList<>();
 
         for (ProjectMedia media : project.getMedia()) {
             if (media.getUsage() == MediaUsage.THUMBNAIL)     thumbnail = media.getMediaUrl();
@@ -167,6 +169,9 @@ public class ProjectServiceImpl implements ProjectService {
         int fundedPercent = project.getGoalAmount() > 0
                 ? (int) ((project.getCurrentAmount() / project.getGoalAmount()) * 100) : 0;
         long daysLeft = ChronoUnit.DAYS.between(LocalDateTime.now(), project.getDeadline());
+
+        long backersCount = donationRepository.countByProject_IdAndPaymentStatus(  // ← FIXED
+                projectId, PaymentStatus.SUCCESS);
 
         List<RewardTier> tiers = rewardTierRepository.findByProject_Id(projectId);
         List<RewardTierResponse> rewards = tiers.stream()
@@ -194,6 +199,7 @@ public class ProjectServiceImpl implements ProjectService {
                 .galleryImages(galleryImages)
                 .storyImages(storyImages)
                 .rewards(rewards)
+                .backersCount(backersCount)                                         // ← FIXED
                 .creator(ProjectFullDetailsResponse.CreatorDto.builder()
                         .id(project.getCreator().getId())
                         .username(project.getCreator().getUsername())
@@ -214,25 +220,20 @@ public class ProjectServiceImpl implements ProjectService {
 
         Pageable pageable = PageRequest.of(request.getPage(), request.getSize(), sort);
 
-        // Pre-process: lowercase + wrap wildcards — avoids lower(bytea) PostgreSQL error
         String keyword = (request.getKeyword() == null || request.getKeyword().isBlank())
                 ? null : "%" + request.getKeyword().trim().toLowerCase() + "%";
-
-
-
 
         return projectRepository
                 .findForExplore(request.getCategoryId(), keyword, pageable)
                 .map(this::toFeedResponse);
     }
 
-    // ── evict project cache when admin approves/rejects ───────────────────────
     @CacheEvict(value = {"projectDetails", "exploreFeed"}, allEntries = true)
     public void evictProjectCaches() { }
 
-    // ── shared mapper ─────────────────────────────────────────────────────────
+    // ── shared feed mapper ────────────────────────────────────────────────────
     private ProjectFeedResponse toFeedResponse(Project project) {
-        String thumbnail = null;
+        String thumbnail    = null;
         String previewVideo = null;
 
         for (ProjectMedia media : project.getMedia()) {
@@ -246,6 +247,9 @@ public class ProjectServiceImpl implements ProjectService {
         String categoryName = project.getCategories().isEmpty()
                 ? null : project.getCategories().get(0).getName();
 
+        long backersCount = donationRepository.countByProject_IdAndPaymentStatus(  // ← FIXED
+                project.getId(), PaymentStatus.SUCCESS);
+
         return ProjectFeedResponse.builder()
                 .id(project.getId())
                 .title(project.getTitle())
@@ -257,7 +261,7 @@ public class ProjectServiceImpl implements ProjectService {
                 .currentAmount(project.getCurrentAmount())
                 .fundedPercentage(fundedPercent)
                 .daysLeft((int) daysLeft)
-                .backersCount(0L)
+                .backersCount(backersCount)                                         // ← FIXED
                 .creator(ProjectFeedResponse.CreatorDto.builder()
                         .id(project.getCreator().getId())
                         .username(project.getCreator().getUsername())
