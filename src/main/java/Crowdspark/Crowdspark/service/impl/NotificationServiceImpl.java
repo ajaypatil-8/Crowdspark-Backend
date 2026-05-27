@@ -1,3 +1,6 @@
+// src/main/java/Crowdspark/Crowdspark/service/impl/NotificationServiceImpl.java
+// CHANGE: Added 4 new @Async methods at the bottom for deadline scheduler events
+
 package Crowdspark.Crowdspark.service.impl;
 
 import Crowdspark.Crowdspark.dto.NotificationResponse;
@@ -37,7 +40,6 @@ public class NotificationServiceImpl implements NotificationService {
         notificationRepository.save(n);
     }
 
-    /** Format ₹ amount: show in L (lakh) if >= 1,00,000, else plain */
     private String fmt(Double amount) {
         if (amount == null) return "₹0";
         if (amount >= 100_000) return String.format("₹%.1fL", amount / 100_000);
@@ -45,7 +47,7 @@ public class NotificationServiceImpl implements NotificationService {
         return String.format("₹%.0f", amount);
     }
 
-    // ── trigger methods (all @Async — fire-and-forget, never blocks HTTP) ─────
+    // ── existing trigger methods ──────────────────────────────────────────────
 
     @Async
     @Override
@@ -59,7 +61,6 @@ public class NotificationServiceImpl implements NotificationService {
             "/projects/" + project.getId(),
             project.getId()
         );
-        // Also notify backer that their donation was confirmed
         notifyBackerDonationConfirmed(backer, project, amount);
     }
 
@@ -97,8 +98,7 @@ public class NotificationServiceImpl implements NotificationService {
             project.getCreator(),
             NotificationType.PROJECT_REJECTED,
             "Project not approved",
-            "\"" + project.getTitle() + "\" was not approved. Reason: " + reason
-                + ". You can edit and resubmit from your dashboard.",
+            "\"" + project.getTitle() + "\" was not approved. Reason: " + reason,
             "/dashboard/my-campaigns",
             project.getId()
         );
@@ -111,7 +111,7 @@ public class NotificationServiceImpl implements NotificationService {
             user,
             NotificationType.KYC_APPROVED,
             "KYC approved ✅",
-            "Your identity verification is complete. You can now create and launch campaigns.",
+            "Your identity verification is complete. You can now launch campaigns!",
             "/dashboard/create-campaign",
             user.getId()
         );
@@ -140,6 +140,70 @@ public class NotificationServiceImpl implements NotificationService {
             "Your contribution of " + fmt(amount) + " to \""
                 + project.getTitle() + "\" is confirmed. Thank you for backing!",
             "/projects/" + project.getId(),
+            project.getId()
+        );
+    }
+
+    // ── NEW: deadline scheduler notifications ─────────────────────────────────
+
+    @Async
+    @Override
+    public void notifyCreatorCampaignFunded(Project project) {
+        save(
+            project.getCreator(),
+            NotificationType.CAMPAIGN_FUNDED,
+            "🎉 Campaign successfully funded!",
+            "\"" + project.getTitle() + "\" has closed and raised "
+                + fmt(project.getCurrentAmount()) + " of its "
+                + fmt(project.getGoalAmount()) + " goal. "
+                + "Funds will be disbursed to you shortly.",
+            "/dashboard/my-campaigns",
+            project.getId()
+        );
+    }
+
+    @Async
+    @Override
+    public void notifyCreatorCampaignFailed(Project project) {
+        save(
+            project.getCreator(),
+            NotificationType.CAMPAIGN_FAILED,
+            "Campaign ended without reaching goal",
+            "\"" + project.getTitle() + "\" raised "
+                + fmt(project.getCurrentAmount()) + " of its "
+                + fmt(project.getGoalAmount()) + " goal. "
+                + "The campaign has closed and backers will be refunded.",
+            "/dashboard/my-campaigns",
+            project.getId()
+        );
+    }
+
+    @Async
+    @Override
+    public void notifyBackerCampaignFunded(User backer, Project project) {
+        save(
+            backer,
+            NotificationType.CAMPAIGN_FUNDED,
+            "✅ A project you backed was funded!",
+            "\"" + project.getTitle() + "\" successfully reached its goal of "
+                + fmt(project.getGoalAmount()) + ". Thanks for making it happen!",
+            "/projects/" + project.getId(),
+            project.getId()
+        );
+    }
+
+    @Async
+    @Override
+    public void notifyBackerCampaignFailed(User backer, Project project) {
+        save(
+            backer,
+            NotificationType.CAMPAIGN_FAILED,
+            "A project you backed didn't reach its goal",
+            "\"" + project.getTitle() + "\" raised "
+                + fmt(project.getCurrentAmount()) + " of its "
+                + fmt(project.getGoalAmount()) + " goal. "
+                + "Your contribution will be fully refunded.",
+            "/dashboard/backed",
             project.getId()
         );
     }

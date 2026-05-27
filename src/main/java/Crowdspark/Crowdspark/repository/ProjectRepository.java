@@ -1,3 +1,6 @@
+// src/main/java/Crowdspark/Crowdspark/repository/ProjectRepository.java
+// CHANGE: Added findExpiredApprovedProjects query for the scheduler
+
 package Crowdspark.Crowdspark.repository;
 
 import Crowdspark.Crowdspark.entity.Project;
@@ -9,27 +12,22 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 public interface ProjectRepository extends JpaRepository<Project, Long> {
 
-    // Feed (only approved/active)
     List<Project> findByStatusOrderByCreatedAtDesc(ProjectStatus status);
 
-    // Creator dashboard
     List<Project> findByCreatorOrderByCreatedAtDesc(User creator);
 
-    // Admin pending review
     List<Project> findByStatus(ProjectStatus status);
 
     long countByCreator(User creator);
 
     long countByCreatorAndStatus(User creator, ProjectStatus status);
 
-    // Section 3 — Explore with optional category + keyword filter
-    // FIX: keyword passed pre-lowercased with % wildcards from service layer.
-    // Avoids CONCAT('%',:param,'%') which causes PostgreSQL to infer param
-    // as bytea → "function lower(bytea) does not exist" error.
+    // Explore feed
     @Query("""
         SELECT DISTINCT p FROM Project p
         LEFT JOIN p.categories c
@@ -41,7 +39,13 @@ public interface ProjectRepository extends JpaRepository<Project, Long> {
     """)
     Page<Project> findForExplore(
         @Param("categoryId") Long categoryId,
-        @Param("keyword") String keyword,
+        @Param("keyword")    String keyword,
         Pageable pageable
     );
+
+    // ── NEW: used by DeadlineSchedulerService every hour ─────────────────────
+    // Finds all APPROVED projects whose deadline has passed.
+    // These need to be transitioned to FUNDED or FAILED.
+    @Query("SELECT p FROM Project p WHERE p.status = 'APPROVED' AND p.deadline < :now")
+    List<Project> findExpiredApprovedProjects(@Param("now") LocalDateTime now);
 }

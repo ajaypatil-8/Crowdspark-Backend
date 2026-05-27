@@ -1,3 +1,8 @@
+// src/main/java/Crowdspark/Crowdspark/service/impl/ProjectServiceImpl.java
+// CHANGE: getProjectDetails now allows APPROVED, FUNDED, FAILED, CLOSED statuses.
+// Previously it threw 404 for anything not APPROVED — meaning funded/failed
+// campaigns would disappear from public view after deadline, which is wrong.
+
 package Crowdspark.Crowdspark.service.impl;
 
 import Crowdspark.Crowdspark.dto.CreateProjectRequest;
@@ -37,6 +42,7 @@ import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
@@ -46,7 +52,15 @@ public class ProjectServiceImpl implements ProjectService {
     private final UserRepository       userRepository;
     private final CategoryRepository   categoryRepository;
     private final RewardTierRepository rewardTierRepository;
-    private final DonationRepository   donationRepository;   // ← ADDED
+    private final DonationRepository   donationRepository;
+
+    // Statuses that are publicly viewable on the project detail page
+    private static final Set<ProjectStatus> VIEWABLE = Set.of(
+            ProjectStatus.APPROVED,
+            ProjectStatus.FUNDED,
+            ProjectStatus.FAILED,
+            ProjectStatus.CLOSED
+    );
 
     @Override
     @Transactional
@@ -57,9 +71,7 @@ public class ProjectServiceImpl implements ProjectService {
                 .orElseThrow(() -> new RuntimeException("Creator not found"));
 
         List<Category> categories = categoryRepository.findAllById(request.getCategoryIds());
-        if (categories.isEmpty()) {
-            throw new RuntimeException("Invalid categories");
-        }
+        if (categories.isEmpty()) throw new RuntimeException("Invalid categories");
 
         Project project = new Project();
         project.setTitle(request.getTitle());
@@ -73,7 +85,6 @@ public class ProjectServiceImpl implements ProjectService {
         project.setCategories(categories);
 
         boolean hasThumbnail = false;
-
         for (CreateProjectRequest.ProjectMediaRequest mediaReq : request.getMedia()) {
             ProjectMedia media = new ProjectMedia();
             media.setMediaUrl(mediaReq.getMediaUrl());
@@ -81,16 +92,11 @@ public class ProjectServiceImpl implements ProjectService {
             media.setUsage(mediaReq.getUsage());
             media.setDisplayOrder(mediaReq.getDisplayOrder());
             media.setProject(project);
-
-            if (mediaReq.getUsage() == MediaUsage.THUMBNAIL) {
-                hasThumbnail = true;
-            }
+            if (mediaReq.getUsage() == MediaUsage.THUMBNAIL) hasThumbnail = true;
             project.getMedia().add(media);
         }
 
-        if (!hasThumbnail) {
-            throw new RuntimeException("Project must have at least one THUMBNAIL image");
-        }
+        if (!hasThumbnail) throw new RuntimeException("Project must have at least one THUMBNAIL image");
 
         Project saved = projectRepository.save(project);
 
@@ -110,9 +116,8 @@ public class ProjectServiceImpl implements ProjectService {
 
     @Override
     public List<ProjectFeedResponse> getProjectFeed() {
-        List<Project> projects =
-                projectRepository.findByStatusOrderByCreatedAtDesc(ProjectStatus.APPROVED);
-        return projects.stream().map(this::toFeedResponse).toList();
+        return projectRepository.findByStatusOrderByCreatedAtDesc(ProjectStatus.APPROVED)
+                .stream().map(this::toFeedResponse).toList();
     }
 
     @Override
@@ -147,7 +152,8 @@ public class ProjectServiceImpl implements ProjectService {
         Project project = projectRepository.findById(projectId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Project not found"));
 
-        if (project.getStatus() != ProjectStatus.APPROVED) {
+        // ── CHANGED: allow APPROVED, FUNDED, FAILED, CLOSED — only hide DRAFT/PENDING/REJECTED ──
+        if (!VIEWABLE.contains(project.getStatus())) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Project not available");
         }
 
@@ -170,7 +176,7 @@ public class ProjectServiceImpl implements ProjectService {
                 ? (int) ((project.getCurrentAmount() / project.getGoalAmount()) * 100) : 0;
         long daysLeft = ChronoUnit.DAYS.between(LocalDateTime.now(), project.getDeadline());
 
-        long backersCount = donationRepository.countByProject_IdAndPaymentStatus(  // ← FIXED
+        long backersCount = donationRepository.countByProject_IdAndPaymentStatus(
                 projectId, PaymentStatus.SUCCESS);
 
         List<RewardTier> tiers = rewardTierRepository.findByProject_Id(projectId);
@@ -199,7 +205,7 @@ public class ProjectServiceImpl implements ProjectService {
                 .galleryImages(galleryImages)
                 .storyImages(storyImages)
                 .rewards(rewards)
-                .backersCount(backersCount)                                         // ← FIXED
+                .backersCount(backersCount)
                 .creator(ProjectFullDetailsResponse.CreatorDto.builder()
                         .id(project.getCreator().getId())
                         .username(project.getCreator().getUsername())
@@ -211,7 +217,6 @@ public class ProjectServiceImpl implements ProjectService {
 
     @Override
     public Page<ProjectFeedResponse> exploreProjects(ExploreRequest request) {
-
         Sort sort = switch (request.getSort().toUpperCase()) {
             case "MOST_FUNDED" -> Sort.by(Sort.Direction.DESC, "currentAmount");
             case "TRENDING"    -> Sort.by(Sort.Direction.DESC, "currentAmount");
@@ -247,7 +252,7 @@ public class ProjectServiceImpl implements ProjectService {
         String categoryName = project.getCategories().isEmpty()
                 ? null : project.getCategories().get(0).getName();
 
-        long backersCount = donationRepository.countByProject_IdAndPaymentStatus(  // ← FIXED
+        long backersCount = donationRepository.countByProject_IdAndPaymentStatus(
                 project.getId(), PaymentStatus.SUCCESS);
 
         return ProjectFeedResponse.builder()
@@ -261,7 +266,7 @@ public class ProjectServiceImpl implements ProjectService {
                 .currentAmount(project.getCurrentAmount())
                 .fundedPercentage(fundedPercent)
                 .daysLeft((int) daysLeft)
-                .backersCount(backersCount)                                         // ← FIXED
+                .backersCount(backersCount)
                 .creator(ProjectFeedResponse.CreatorDto.builder()
                         .id(project.getCreator().getId())
                         .username(project.getCreator().getUsername())
