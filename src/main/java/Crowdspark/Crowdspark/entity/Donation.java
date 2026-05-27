@@ -1,10 +1,10 @@
 // src/main/java/Crowdspark/Crowdspark/entity/Donation.java
-// CHANGE: Added `razorpayOrderId` field — only this field is new.
-// Everything else is identical to your existing file.
+// CHANGE: Added refundStatus, razorpayRefundId, refundedAt fields
 
 package Crowdspark.Crowdspark.entity;
 
 import Crowdspark.Crowdspark.entity.type.PaymentStatus;
+import Crowdspark.Crowdspark.entity.type.RefundStatus;
 import jakarta.persistence.*;
 import lombok.*;
 import org.springframework.data.annotation.CreatedDate;
@@ -40,7 +40,6 @@ public class Donation {
     @Column(nullable = false)
     private Double amount;
 
-    /** Optional reward tier backer chose (null = no reward) */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "reward_tier_id")
     private RewardTier rewardTier;
@@ -49,16 +48,25 @@ public class Donation {
     @Column(nullable = false)
     private PaymentStatus paymentStatus = PaymentStatus.PENDING;
 
-    // ── NEW: Razorpay order id (set when order is created, before payment) ───
     @Column(name = "razorpay_order_id")
     private String razorpayOrderId;
 
-    /** Razorpay payment id — set after successful payment verification */
+    /** Razorpay payment id — set after successful payment */
     private String transactionId;
 
-    /** Backer's note / message to creator (optional) */
     @Column(length = 500)
     private String message;
+
+    // ── NEW: Refund tracking fields ───────────────────────────────────────────
+    @Enumerated(EnumType.STRING)
+    @Column(name = "refund_status")
+    private RefundStatus refundStatus;
+
+    @Column(name = "razorpay_refund_id")
+    private String razorpayRefundId;
+
+    @Column(name = "refunded_at")
+    private LocalDateTime refundedAt;
 
     @CreatedDate
     @Column(nullable = false, updatable = false)

@@ -2,14 +2,18 @@ package Crowdspark.Crowdspark.controller;
 
 import Crowdspark.Crowdspark.dto.ApiResponse;
 import Crowdspark.Crowdspark.dto.BackerDashboardResponse;
+import Crowdspark.Crowdspark.dto.RefundResponse;
 import Crowdspark.Crowdspark.entity.User;
 import Crowdspark.Crowdspark.service.BackerService;
 import Crowdspark.Crowdspark.service.UserService;
+import Crowdspark.Crowdspark.service.RefundService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -51,5 +55,13 @@ public class BackerController {
                 "totalProjectsBacked", dash.getTotalProjectsBacked(),
                 "totalAmountBacked",   dash.getTotalAmountBacked()
         )));
+    }
+    @PreAuthorize("isAuthenticated()")
+    @GetMapping("/refunds")
+    public ResponseEntity<ApiResponse<List<RefundResponse>>> getMyRefunds(
+            @AuthenticationPrincipal String username) {
+        User backer = userService.getByUsername(username);
+        return ResponseEntity.ok(ApiResponse.ok(
+                RefundService.getRefundsForBacker(backer.getId())));
     }
 }

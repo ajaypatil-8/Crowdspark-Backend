@@ -36,6 +36,9 @@ public interface NotificationService {
     void notifyCreatorPayoutInitiated(Project project, Double netAmount);
     void notifyCreatorPayoutFailed(Project project, String reason);
 
+    void notifyBackerRefundProcessed(User backer, Project project, Double amount);
+    void notifyBackerRefundFailed(User backer, Project project, Double amount, String reason);
+
     // ── REST-facing methods ───────────────────────────────────────────────────
     Page<NotificationResponse> getNotifications(Long userId, Pageable pageable);
     long             getUnreadCount(Long userId);

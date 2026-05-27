@@ -13,12 +13,18 @@ import Crowdspark.Crowdspark.dto.KycStatusResponse;
 import Crowdspark.Crowdspark.dto.PayoutResponse;
 import Crowdspark.Crowdspark.dto.RejectProjectRequest;
 import Crowdspark.Crowdspark.dto.UserResponse;
+import Crowdspark.Crowdspark.entity.Project;
 import Crowdspark.Crowdspark.entity.User;
+import Crowdspark.Crowdspark.repository.ProjectRepository;
 import Crowdspark.Crowdspark.service.AdminService;
 import Crowdspark.Crowdspark.service.ContactMessageService;
 import Crowdspark.Crowdspark.service.KycService;
 import Crowdspark.Crowdspark.service.PayoutService;
 import Crowdspark.Crowdspark.service.UserService;
+ import Crowdspark.Crowdspark.dto.RefundResponse;
+ import Crowdspark.Crowdspark.entity.type.ProjectStatus;
+ import Crowdspark.Crowdspark.service.RefundService;
+ import org.springframework.web.server.ResponseStatusException;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -199,4 +205,39 @@ public class AdminController {
     public ResponseEntity<ApiResponse<PayoutResponse>> getProjectPayout(@PathVariable Long id) {
         return ResponseEntity.ok(ApiResponse.ok(payoutService.getPayoutByProject(id)));
     }
+
+    /**
+     * GET /admin/projects/{id}/refunds
+     * List all refunds for a specific project (admin view).
+     */
+    @PreAuthorize("hasRole('ADMIN')")
+    @GetMapping("/projects/{id}/refunds")
+    public ResponseEntity<ApiResponse<List<RefundResponse>>> getProjectRefunds(
+            @PathVariable Long id) {
+        return ResponseEntity.ok(ApiResponse.ok(refundService.getRefundsForProject(id)));
+    }
+
+    /**
+     * POST /admin/projects/{id}/refunds/retry
+     * Manually retry failed refunds for a project.
+     * Useful when Razorpay was down during auto-refund.
+     */
+    @PreAuthorize("hasRole('ADMIN')")
+    @PostMapping("/projects/{id}/refunds/retry")
+    public ResponseEntity<ApiResponse<Void>> retryProjectRefunds(
+            @PathVariable Long id) {
+        Project project = ProjectRepository.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Project not found"));
+        if (project.getStatus() != ProjectStatus.FAILED) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Refunds can only be retried for FAILED projects");
+        }
+        RefundService.getRefundsForProject(project);
+        return ResponseEntity.ok(ApiResponse.<Void>builder()
+                .success(true)
+                .message("Refund retry initiated for all pending donations")
+                .build());
+    }
+
 }

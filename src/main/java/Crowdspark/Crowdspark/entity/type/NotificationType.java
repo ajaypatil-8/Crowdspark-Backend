@@ -1,6 +1,6 @@
 // src/main/java/Crowdspark/Crowdspark/entity/type/NotificationType.java
-// CHANGE: Add PAYOUT_INITIATED and PAYOUT_FAILED
-// (Use the NotificationType.java from Feature #2 and add these 2 lines)
+// CHANGE: Added REFUND_PROCESSED and REFUND_FAILED
+// (replaces the Feature #3 version of this file)
 
 package Crowdspark.Crowdspark.entity.type;
 
@@ -10,10 +10,12 @@ public enum NotificationType {
     PROJECT_REJECTED,
     PROJECT_GOAL_REACHED,
     PROJECT_DEADLINE_NEAR,
-    CAMPAIGN_FUNDED,       // from Feature #2
-    CAMPAIGN_FAILED,       // from Feature #2
-    PAYOUT_INITIATED,      // ← NEW: payout sent to creator
-    PAYOUT_FAILED,         // ← NEW: payout failed, admin notified
+    CAMPAIGN_FUNDED,       // Feature #2
+    CAMPAIGN_FAILED,       // Feature #2
+    PAYOUT_INITIATED,      // Feature #3
+    PAYOUT_FAILED,         // Feature #3
+    REFUND_PROCESSED,      // ← NEW: refund successfully sent to backer
+    REFUND_FAILED,         // ← NEW: refund failed, backer notified to contact support
     KYC_APPROVED,
     KYC_REJECTED,
     DONATION_CONFIRMED,

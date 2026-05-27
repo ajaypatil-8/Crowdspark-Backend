@@ -308,4 +308,35 @@ public class NotificationServiceImpl implements NotificationService {
                 project.getId()
         );
     }
+
+    @Async
+    @Override
+    public void notifyBackerRefundProcessed(User backer, Project project, Double amount) {
+        save(
+                backer,
+                NotificationType.REFUND_PROCESSED,
+                "✅ Your refund is on the way!",
+                "Your contribution of " + fmt(amount) + " to \""
+                        + project.getTitle() + "\" is being refunded. "
+                        + "It will reach your account within 5-7 business days depending on your bank.",
+                "/dashboard/backed",
+                project.getId()
+        );
+    }
+
+    @Async
+    @Override
+    public void notifyBackerRefundFailed(User backer, Project project, Double amount, String reason) {
+        save(
+                backer,
+                NotificationType.REFUND_FAILED,
+                "⚠️ Refund could not be processed",
+                "We were unable to refund your contribution of " + fmt(amount) + " for \""
+                        + project.getTitle() + "\". Please contact support@crowdspark.in "
+                        + "with your donation details and we'll resolve this immediately.",
+                "/dashboard/backed",
+                project.getId()
+        );
+    }
+
 }
