@@ -278,4 +278,34 @@ public class NotificationServiceImpl implements NotificationService {
                 .readAt(n.getReadAt())
                 .build();
     }
+
+    @Async
+    @Override
+    public void notifyCreatorPayoutInitiated(Project project, Double netAmount) {
+        save(
+                project.getCreator(),
+                NotificationType.PAYOUT_INITIATED,
+                "💸 Your payout is on the way!",
+                "A payout of " + fmt(netAmount) + " for \""
+                        + project.getTitle() + "\" has been initiated to your UPI. "
+                        + "It typically arrives within a few minutes.",
+                "/dashboard/my-campaigns",
+                project.getId()
+        );
+    }
+
+    @Async
+    @Override
+    public void notifyCreatorPayoutFailed(Project project, String reason) {
+        save(
+                project.getCreator(),
+                NotificationType.PAYOUT_FAILED,
+                "⚠️ Payout failed",
+                "The payout for \"" + project.getTitle() + "\" could not be processed. "
+                        + "Reason: " + (reason != null ? reason : "Unknown error")
+                        + ". Please contact support.",
+                "/dashboard/my-campaigns",
+                project.getId()
+        );
+    }
 }

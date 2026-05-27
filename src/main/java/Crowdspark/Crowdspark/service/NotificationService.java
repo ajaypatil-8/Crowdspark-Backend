@@ -33,6 +33,9 @@ public interface NotificationService {
     /** Notify a single backer the campaign failed and they will be refunded */
     void notifyBackerCampaignFailed(User backer, Project project);
 
+    void notifyCreatorPayoutInitiated(Project project, Double netAmount);
+    void notifyCreatorPayoutFailed(Project project, String reason);
+
     // ── REST-facing methods ───────────────────────────────────────────────────
     Page<NotificationResponse> getNotifications(Long userId, Pageable pageable);
     long             getUnreadCount(Long userId);

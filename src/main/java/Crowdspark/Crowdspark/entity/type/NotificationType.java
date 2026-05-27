@@ -1,18 +1,21 @@
 // src/main/java/Crowdspark/Crowdspark/entity/type/NotificationType.java
-// CHANGE: Added CAMPAIGN_FUNDED and CAMPAIGN_FAILED for scheduler notifications
+// CHANGE: Add PAYOUT_INITIATED and PAYOUT_FAILED
+// (Use the NotificationType.java from Feature #2 and add these 2 lines)
 
 package Crowdspark.Crowdspark.entity.type;
 
 public enum NotificationType {
-    PROJECT_BACKED,         // creator: someone backed your project
-    PROJECT_APPROVED,       // creator: admin approved your project
-    PROJECT_REJECTED,       // creator: admin rejected your project
-    PROJECT_GOAL_REACHED,   // creator: project hit funding goal mid-campaign
-    PROJECT_DEADLINE_NEAR,  // creator: 3 days left
-    CAMPAIGN_FUNDED,        // ← NEW: deadline passed, goal reached — creator + backers
-    CAMPAIGN_FAILED,        // ← NEW: deadline passed, goal not reached — creator + backers
-    KYC_APPROVED,           // user: KYC approved
-    KYC_REJECTED,           // user: KYC rejected
-    DONATION_CONFIRMED,     // backer: your donation was confirmed
-    GENERAL                 // misc admin message
+    PROJECT_BACKED,
+    PROJECT_APPROVED,
+    PROJECT_REJECTED,
+    PROJECT_GOAL_REACHED,
+    PROJECT_DEADLINE_NEAR,
+    CAMPAIGN_FUNDED,       // from Feature #2
+    CAMPAIGN_FAILED,       // from Feature #2
+    PAYOUT_INITIATED,      // ← NEW: payout sent to creator
+    PAYOUT_FAILED,         // ← NEW: payout failed, admin notified
+    KYC_APPROVED,
+    KYC_REJECTED,
+    DONATION_CONFIRMED,
+    GENERAL
 }
