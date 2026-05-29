@@ -46,4 +46,6 @@ public interface NotificationService {
     int              markAllRead(Long userId);
     void             deleteNotification(Long notificationId, Long userId);
     void             deleteAllNotifications(Long userId);
+
+    void notifyBackerCampaignUpdate(User backer, Project project, String updateTitle);
 }

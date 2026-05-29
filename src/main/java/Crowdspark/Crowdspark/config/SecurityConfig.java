@@ -94,6 +94,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/payment/**").authenticated()
 
                         .requestMatchers(HttpMethod.GET, "/api/projects/*/rewards").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/projects/*/updates").permitAll()
 
                         .anyRequest().authenticated()
                 )

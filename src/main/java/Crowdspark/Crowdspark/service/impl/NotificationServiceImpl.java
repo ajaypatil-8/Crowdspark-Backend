@@ -339,4 +339,18 @@ public class NotificationServiceImpl implements NotificationService {
         );
     }
 
+    @Async
+    @Override
+    public void notifyBackerCampaignUpdate(User backer, Project project, String updateTitle) {
+        save(
+                backer,
+                NotificationType.CAMPAIGN_UPDATE,
+                "📢 New update from " + project.getTitle(),
+                "The creator posted: \"" + updateTitle + "\". "
+                        + "Check it out on the project page.",
+                "/projects/" + project.getId() + "?tab=updates",
+                project.getId()
+        );
+    }
+
 }
