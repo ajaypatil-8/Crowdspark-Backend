@@ -1,6 +1,6 @@
 // src/main/java/Crowdspark/Crowdspark/entity/type/NotificationType.java
-// CHANGE: Added REFUND_PROCESSED and REFUND_FAILED
-// (replaces the Feature #3 version of this file)
+// CHANGE: Added CAMPAIGN_UPDATE
+// (replaces Feature #4 version)
 
 package Crowdspark.Crowdspark.entity.type;
 
@@ -10,12 +10,13 @@ public enum NotificationType {
     PROJECT_REJECTED,
     PROJECT_GOAL_REACHED,
     PROJECT_DEADLINE_NEAR,
-    CAMPAIGN_FUNDED,       // Feature #2
-    CAMPAIGN_FAILED,       // Feature #2
-    PAYOUT_INITIATED,      // Feature #3
-    PAYOUT_FAILED,         // Feature #3
-    REFUND_PROCESSED,      // ← NEW: refund successfully sent to backer
-    REFUND_FAILED,         // ← NEW: refund failed, backer notified to contact support
+    CAMPAIGN_FUNDED,
+    CAMPAIGN_FAILED,
+    CAMPAIGN_UPDATE,       // ← NEW: creator posted an update, notify backers
+    PAYOUT_INITIATED,
+    PAYOUT_FAILED,
+    REFUND_PROCESSED,
+    REFUND_FAILED,
     KYC_APPROVED,
     KYC_REJECTED,
     DONATION_CONFIRMED,
