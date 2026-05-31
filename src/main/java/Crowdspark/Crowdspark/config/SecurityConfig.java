@@ -95,6 +95,7 @@ public class SecurityConfig {
 
                         .requestMatchers(HttpMethod.GET, "/api/projects/*/rewards").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/projects/*/updates").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/projects/*/comments").permitAll()
 
                         .anyRequest().authenticated()
                 )

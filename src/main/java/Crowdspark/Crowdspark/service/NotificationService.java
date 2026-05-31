@@ -48,4 +48,6 @@ public interface NotificationService {
     void             deleteAllNotifications(Long userId);
 
     void notifyBackerCampaignUpdate(User backer, Project project, String updateTitle);
+    void notifyCreatorNewComment(Project project, User commenter);
+    void notifyUserCommentReplied(User recipient, Project project, String replierUsername);
 }

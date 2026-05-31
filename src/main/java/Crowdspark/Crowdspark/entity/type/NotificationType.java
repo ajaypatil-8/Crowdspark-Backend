@@ -1,6 +1,6 @@
 // src/main/java/Crowdspark/Crowdspark/entity/type/NotificationType.java
-// CHANGE: Added CAMPAIGN_UPDATE
-// (replaces Feature #4 version)
+// CHANGE: Added COMMENT_POSTED and COMMENT_REPLIED
+// (replaces Feature #5 version)
 
 package Crowdspark.Crowdspark.entity.type;
 
@@ -12,7 +12,9 @@ public enum NotificationType {
     PROJECT_DEADLINE_NEAR,
     CAMPAIGN_FUNDED,
     CAMPAIGN_FAILED,
-    CAMPAIGN_UPDATE,       // ← NEW: creator posted an update, notify backers
+    CAMPAIGN_UPDATE,
+    COMMENT_POSTED,        // ← NEW: backer commented on creator's project
+    COMMENT_REPLIED,       // ← NEW: someone replied to your comment
     PAYOUT_INITIATED,
     PAYOUT_FAILED,
     REFUND_PROCESSED,

@@ -353,4 +353,34 @@ public class NotificationServiceImpl implements NotificationService {
         );
     }
 
+    @Async
+    @Override
+    public void notifyCreatorNewComment(Project project, User commenter) {
+        save(
+                project.getCreator(),
+                NotificationType.COMMENT_POSTED,
+                "💬 New comment on your campaign",
+                "@" + commenter.getUsername() + " commented on \""
+                        + project.getTitle() + "\". Tap to view and respond.",
+                "/projects/" + project.getId() + "?tab=comments",
+                project.getId()
+        );
+    }
+
+    @Async
+    @Override
+    public void notifyUserCommentReplied(User recipient, Project project, String replierUsername) {
+        save(
+                recipient,
+                NotificationType.COMMENT_REPLIED,
+                "↩️ Someone replied to your comment",
+                "@" + replierUsername + " replied to your comment on \""
+                        + project.getTitle() + "\".",
+                "/projects/" + project.getId() + "?tab=comments",
+                project.getId()
+        );
+    }
+
+
+
 }
