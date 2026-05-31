@@ -1,30 +1,28 @@
 // src/main/java/Crowdspark/Crowdspark/controller/AdminController.java
-// CHANGE: Added 3 payout endpoints at the bottom
 
 package Crowdspark.Crowdspark.controller;
 
 import Crowdspark.Crowdspark.dto.AdminKycAction;
 import Crowdspark.Crowdspark.dto.AdminProjectListResponse;
+import Crowdspark.Crowdspark.dto.ApiResponse;
 import Crowdspark.Crowdspark.dto.ContactMessageReplyRequest;
 import Crowdspark.Crowdspark.dto.ContactMessageResponse;
-import Crowdspark.Crowdspark.dto.ProjectFullDetailsResponse;
-import Crowdspark.Crowdspark.dto.ApiResponse;
 import Crowdspark.Crowdspark.dto.KycStatusResponse;
 import Crowdspark.Crowdspark.dto.PayoutResponse;
+import Crowdspark.Crowdspark.dto.ProjectFullDetailsResponse;
+import Crowdspark.Crowdspark.dto.RefundResponse;
 import Crowdspark.Crowdspark.dto.RejectProjectRequest;
 import Crowdspark.Crowdspark.dto.UserResponse;
 import Crowdspark.Crowdspark.entity.Project;
 import Crowdspark.Crowdspark.entity.User;
+import Crowdspark.Crowdspark.entity.type.ProjectStatus;
 import Crowdspark.Crowdspark.repository.ProjectRepository;
 import Crowdspark.Crowdspark.service.AdminService;
 import Crowdspark.Crowdspark.service.ContactMessageService;
 import Crowdspark.Crowdspark.service.KycService;
 import Crowdspark.Crowdspark.service.PayoutService;
+import Crowdspark.Crowdspark.service.RefundService;
 import Crowdspark.Crowdspark.service.UserService;
- import Crowdspark.Crowdspark.dto.RefundResponse;
- import Crowdspark.Crowdspark.entity.type.ProjectStatus;
- import Crowdspark.Crowdspark.service.RefundService;
- import org.springframework.web.server.ResponseStatusException;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -32,6 +30,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 
@@ -44,7 +43,10 @@ public class AdminController {
     private final KycService            kycService;
     private final UserService           userService;
     private final ContactMessageService contactMessageService;
-    private final PayoutService         payoutService;        // ← NEW
+    private final PayoutService         payoutService;
+    private final RefundService         refundService;
+    // BUG A FIX: inject ProjectRepository as an instance (was incorrectly called as static)
+    private final ProjectRepository     projectRepository;
 
     // ─── Projects ─────────────────────────────────────────────────────────────
 
@@ -168,12 +170,11 @@ public class AdminController {
                 .success(true).message("User activated").build());
     }
 
-    // ─── Payouts (NEW) ────────────────────────────────────────────────────────
+    // ─── Payouts ──────────────────────────────────────────────────────────────
 
     /**
      * POST /admin/projects/{id}/payout
      * Initiate payout to creator for a FUNDED project.
-     * Deducts platform fee, sends remaining amount to creator's UPI via Razorpay.
      */
     @PreAuthorize("hasRole('ADMIN')")
     @PostMapping("/projects/{id}/payout")
@@ -206,6 +207,8 @@ public class AdminController {
         return ResponseEntity.ok(ApiResponse.ok(payoutService.getPayoutByProject(id)));
     }
 
+    // ─── Refunds ──────────────────────────────────────────────────────────────
+
     /**
      * GET /admin/projects/{id}/refunds
      * List all refunds for a specific project (admin view).
@@ -219,25 +222,33 @@ public class AdminController {
 
     /**
      * POST /admin/projects/{id}/refunds/retry
-     * Manually retry failed refunds for a project.
-     * Useful when Razorpay was down during auto-refund.
+     * Retry all failed/pending refunds for a FAILED project.
+     *
+     * BUG A FIX: projectRepository is now injected (was called as static).
+     * BUG B FIX: now calls processRefundsForProject() to actually trigger retries
+     *            (was wrongly calling getRefundsForProject() which only reads).
      */
     @PreAuthorize("hasRole('ADMIN')")
     @PostMapping("/projects/{id}/refunds/retry")
-    public ResponseEntity<ApiResponse<Void>> retryProjectRefunds(
-            @PathVariable Long id) {
-        Project project = ProjectRepository.findById(id)
+    public ResponseEntity<ApiResponse<Void>> retryProjectRefunds(@PathVariable Long id) {
+        // BUG A FIX: use injected projectRepository instance, not static call
+        Project project = projectRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND, "Project not found"));
+
         if (project.getStatus() != ProjectStatus.FAILED) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Refunds can only be retried for FAILED projects");
+                    "Refunds can only be retried for FAILED projects. Current status: "
+                            + project.getStatus());
         }
-        RefundService.getRefundsForProject(project);
+
+        // BUG B FIX: call processRefundsForProject() to actually retry,
+        // not getRefundsForProject() which is a read-only query
+        refundService.processRefundsForProject(project);
+
         return ResponseEntity.ok(ApiResponse.<Void>builder()
                 .success(true)
                 .message("Refund retry initiated for all pending donations")
                 .build());
     }
-
 }

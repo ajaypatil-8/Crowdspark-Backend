@@ -10,9 +10,8 @@ public interface RefundService {
 
     void processRefundsForProject(Project project);
 
-    /** Admin: get all refunds for a project */
     List<RefundResponse> getRefundsForProject(Long projectId);
 
-    /** Backer: get their own refund history */
+
     List<RefundResponse> getRefundsForBacker(Long backerId);
 }
