@@ -87,6 +87,8 @@ public class SecurityConfig {
                         // Section 4 — Backer Dashboard
                         .requestMatchers("/api/backer/**").authenticated()
 
+                        .requestMatchers("/api/users/saved/**").authenticated()
+
                         .requestMatchers("/admin/**").hasRole("ADMIN")
 
                         .requestMatchers("/api/notifications/**").authenticated()
