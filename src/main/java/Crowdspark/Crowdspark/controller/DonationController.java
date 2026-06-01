@@ -6,6 +6,9 @@ import Crowdspark.Crowdspark.dto.DonationResponse;
 import Crowdspark.Crowdspark.entity.User;
 import Crowdspark.Crowdspark.service.DonationService;
 import Crowdspark.Crowdspark.service.UserService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -19,6 +22,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/donations")
 @RequiredArgsConstructor
+@Tag(name = "Donations", description = "View donation history for backers and creators")
 public class DonationController {
 
     private final DonationService donationService;
@@ -38,6 +42,7 @@ public class DonationController {
 
     /** My donation history */
     @PreAuthorize("isAuthenticated()")
+    @Operation(summary = "Get my donation history", security = @SecurityRequirement(name = "bearerAuth"))
     @GetMapping("/my")
     public ResponseEntity<ApiResponse<List<DonationResponse>>> myDonations(
             @AuthenticationPrincipal String username
@@ -48,6 +53,7 @@ public class DonationController {
 
     /** Donations for a specific project (creator/admin) */
     @PreAuthorize("hasAnyRole('CREATOR','ADMIN')")
+    @Operation(summary = "Get donations for a project", security = @SecurityRequirement(name = "bearerAuth"))
     @GetMapping("/project/{projectId}")
     public ResponseEntity<ApiResponse<List<DonationResponse>>> projectDonations(
             @PathVariable Long projectId

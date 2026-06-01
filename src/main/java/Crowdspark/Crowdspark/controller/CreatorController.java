@@ -7,6 +7,9 @@ import Crowdspark.Crowdspark.entity.User;
 import Crowdspark.Crowdspark.service.CloudinaryService;
 import Crowdspark.Crowdspark.service.KycService;
 import Crowdspark.Crowdspark.service.UserService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
@@ -21,13 +24,14 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/creator")
 @RequiredArgsConstructor
+@Tag(name = "Creator KYC", description = "KYC submission and phone OTP verification for creator upgrade")
 public class CreatorController {
 
     private final KycService kycService;
     private final UserService userService;
     private final CloudinaryService cloudinaryService;
 
-    // send
+    @Operation(summary = "Send phone OTP", security = @SecurityRequirement(name = "bearerAuth"))
     @PreAuthorize("isAuthenticated()")
     @PostMapping("/send-otp")
     public ResponseEntity<String> sendOtp(@AuthenticationPrincipal String username) {
@@ -35,7 +39,7 @@ public class CreatorController {
         return ResponseEntity.ok(kycService.sendOtp(user.getId()));
     }
 
-    // verify
+    @Operation(summary = "Verify phone OTP", security = @SecurityRequirement(name = "bearerAuth"))
     @PreAuthorize("isAuthenticated()")
     @PostMapping("/verify-otp")
     public ResponseEntity<String> verifyOtp(
@@ -46,9 +50,9 @@ public class CreatorController {
         return ResponseEntity.ok(kycService.verifyOtp(user.getId(), request.getOtp()));
     }
 
-    // upload kyc doc image → returns secure_url + public_id
-    // call this for each doc (PAN, aadhaar front, aadhaar back) separately
-    // then use returned URLs in submit-kyc
+    @Operation(summary = "Upload a KYC document image",
+            description = "Upload a single KYC doc (PAN, Aadhaar front, Aadhaar back) to Cloudinary. Returns secure_url and public_id to use in submit-kyc.",
+            security = @SecurityRequirement(name = "bearerAuth"))
     @PreAuthorize("hasRole('CREATOR')")
     @PostMapping(value = "/upload-kyc-doc", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<Map<String, String>> uploadKycDoc(
@@ -61,7 +65,7 @@ public class CreatorController {
         return ResponseEntity.ok(result);
     }
 
-    // submit
+    @Operation(summary = "Submit KYC documents", security = @SecurityRequirement(name = "bearerAuth"))
     @PreAuthorize("hasRole('CREATOR')")
     @PostMapping("/submit-kyc")
     public ResponseEntity<KycStatusResponse> submitKyc(
@@ -72,7 +76,7 @@ public class CreatorController {
         return ResponseEntity.ok(kycService.submitKyc(user.getId(), request));
     }
 
-    // status
+    @Operation(summary = "Get KYC status", security = @SecurityRequirement(name = "bearerAuth"))
     @PreAuthorize("hasRole('CREATOR')")
     @GetMapping("/kyc-status")
     public ResponseEntity<KycStatusResponse> getMyKycStatus(

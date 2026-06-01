@@ -5,6 +5,9 @@ import Crowdspark.Crowdspark.dto.NotificationResponse;
 import Crowdspark.Crowdspark.entity.User;
 import Crowdspark.Crowdspark.service.NotificationService;
 import Crowdspark.Crowdspark.service.UserService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -18,12 +21,14 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/notifications")
 @RequiredArgsConstructor
+@Tag(name = "Notifications", description = "In-app notifications — list, mark read, delete")
 public class NotificationController {
 
     private final NotificationService notificationService;
     private final UserService         userService;
 
     /** GET /api/notifications?page=0&size=20 */
+    @Operation(summary = "Get notifications (paginated)", security = @SecurityRequirement(name = "bearerAuth"))
     @GetMapping
     public ResponseEntity<ApiResponse<Page<NotificationResponse>>> getNotifications(
             @AuthenticationPrincipal String username,
@@ -36,6 +41,7 @@ public class NotificationController {
     }
 
     /** GET /api/notifications/unread-count — used by notification bell badge */
+    @Operation(summary = "Get unread count", security = @SecurityRequirement(name = "bearerAuth"))
     @GetMapping("/unread-count")
     public ResponseEntity<ApiResponse<Map<String, Long>>> getUnreadCount(
             @AuthenticationPrincipal String username
@@ -46,6 +52,7 @@ public class NotificationController {
     }
 
     /** PUT /api/notifications/{id}/read */
+    @Operation(summary = "Mark notification as read", security = @SecurityRequirement(name = "bearerAuth"))
     @PutMapping("/{id}/read")
     public ResponseEntity<ApiResponse<NotificationResponse>> markRead(
             @PathVariable Long id,
@@ -56,6 +63,7 @@ public class NotificationController {
     }
 
     /** PUT /api/notifications/read-all */
+    @Operation(summary = "Mark all as read", security = @SecurityRequirement(name = "bearerAuth"))
     @PutMapping("/read-all")
     public ResponseEntity<ApiResponse<Map<String, Integer>>> markAllRead(
             @AuthenticationPrincipal String username
@@ -66,6 +74,7 @@ public class NotificationController {
     }
 
     /** DELETE /api/notifications/{id} */
+    @Operation(summary = "Delete a notification", security = @SecurityRequirement(name = "bearerAuth"))
     @DeleteMapping("/{id}")
     public ResponseEntity<ApiResponse<Void>> deleteOne(
             @PathVariable Long id,
@@ -77,6 +86,7 @@ public class NotificationController {
     }
 
     /** DELETE /api/notifications/clear-all */
+    @Operation(summary = "Clear all notifications", security = @SecurityRequirement(name = "bearerAuth"))
     @DeleteMapping("/clear-all")
     public ResponseEntity<ApiResponse<Void>> clearAll(
             @AuthenticationPrincipal String username

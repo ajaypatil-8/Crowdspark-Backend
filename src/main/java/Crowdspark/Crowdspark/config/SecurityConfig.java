@@ -99,6 +99,13 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/projects/*/updates").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/projects/*/comments").permitAll()
 
+                        .requestMatchers(
+                                "/swagger-ui/**",
+                                "/swagger-ui.html",
+                                "/api-docs/**",
+                                "/api-docs.yaml"
+                        ).permitAll()
+
                         .anyRequest().authenticated()
                 )
 

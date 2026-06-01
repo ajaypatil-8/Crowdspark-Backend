@@ -1,5 +1,3 @@
-
-
 package Crowdspark.Crowdspark.controller;
 
 import Crowdspark.Crowdspark.dto.ApiResponse;
@@ -10,6 +8,9 @@ import Crowdspark.Crowdspark.entity.type.ProjectStatus;
 import Crowdspark.Crowdspark.service.BackerService;
 import Crowdspark.Crowdspark.service.RefundService;
 import Crowdspark.Crowdspark.service.UserService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -22,6 +23,7 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/backer")
 @RequiredArgsConstructor
+@Tag(name = "Backer Dashboard", description = "Backer-specific views — backed projects, refunds, profile")
 public class BackerController {
 
     private final BackerService backerService;
@@ -29,6 +31,9 @@ public class BackerController {
     private final RefundService refundService;
 
     /** GET /api/backer/dashboard — stats + backed-projects in one call */
+    @Operation(summary = "Get backer dashboard",
+            description = "Returns stats and full backed-projects list in a single call.",
+            security = @SecurityRequirement(name = "bearerAuth"))
     @PreAuthorize("isAuthenticated()")
     @GetMapping("/dashboard")
     public ResponseEntity<ApiResponse<BackerDashboardResponse>> getDashboard(
@@ -38,6 +43,7 @@ public class BackerController {
     }
 
     /** GET /api/backer/backed-projects */
+    @Operation(summary = "Get projects I have backed", security = @SecurityRequirement(name = "bearerAuth"))
     @PreAuthorize("isAuthenticated()")
     @GetMapping("/backed-projects")
     public ResponseEntity<ApiResponse<Object>> getBackedProjects(
@@ -48,6 +54,9 @@ public class BackerController {
         ));
     }
 
+    @Operation(summary = "Get backer stats",
+            description = "Returns totalBacked, totalAmountBacked, and activeCampaigns counts.",
+            security = @SecurityRequirement(name = "bearerAuth"))
     @PreAuthorize("isAuthenticated()")
     @GetMapping("/stats")
     public ResponseEntity<ApiResponse<Map<String, Object>>> getStats(
@@ -55,20 +64,18 @@ public class BackerController {
         User user = userService.getByUsername(username);
         BackerDashboardResponse dash = backerService.getDashboard(user.getId());
 
-        // Count active campaigns (status = APPROVED) from the backed projects list
         long activeCampaigns = dash.getBackedProjects().stream()
                 .filter(p -> ProjectStatus.APPROVED.name().equals(p.getStatus()))
                 .count();
 
         return ResponseEntity.ok(ApiResponse.ok(Map.of(
-                // FIX: key renamed to "totalBacked" to match frontend BackerStatsResponse
                 "totalBacked",       dash.getTotalProjectsBacked(),
                 "totalAmountBacked", dash.getTotalAmountBacked(),
-                // FIX: added missing "activeCampaigns" field
                 "activeCampaigns",   activeCampaigns
         )));
     }
 
+    @Operation(summary = "Get my refund history", security = @SecurityRequirement(name = "bearerAuth"))
     @PreAuthorize("isAuthenticated()")
     @GetMapping("/refunds")
     public ResponseEntity<ApiResponse<List<RefundResponse>>> getMyRefunds(

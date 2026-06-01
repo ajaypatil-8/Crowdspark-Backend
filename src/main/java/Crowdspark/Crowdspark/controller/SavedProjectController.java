@@ -6,6 +6,9 @@ import Crowdspark.Crowdspark.dto.ProjectFeedResponse;
 import Crowdspark.Crowdspark.entity.User;
 import Crowdspark.Crowdspark.service.SavedProjectService;
 import Crowdspark.Crowdspark.service.UserService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -18,6 +21,7 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/users/saved")
 @RequiredArgsConstructor
+@Tag(name = "Saved / Watchlist", description = "Save and manage a user's watchlist of projects")
 public class SavedProjectController {
 
     private final SavedProjectService savedProjectService;
@@ -27,6 +31,8 @@ public class SavedProjectController {
      * GET /api/users/saved
      * Returns all projects saved by the logged-in user, newest first.
      */
+    @Operation(summary = "Get saved projects",
+            security = @SecurityRequirement(name = "bearerAuth"))
     @PreAuthorize("isAuthenticated()")
     @GetMapping
     public ResponseEntity<ApiResponse<List<ProjectFeedResponse>>> getSaved(
@@ -40,6 +46,8 @@ public class SavedProjectController {
      * GET /api/users/saved/{projectId}/check
      * Returns { saved: true/false } — used to set the bookmark button state.
      */
+    @Operation(summary = "Check if project is saved",
+            security = @SecurityRequirement(name = "bearerAuth"))
     @PreAuthorize("isAuthenticated()")
     @GetMapping("/{projectId}/check")
     public ResponseEntity<ApiResponse<Map<String, Boolean>>> checkSaved(
@@ -54,6 +62,8 @@ public class SavedProjectController {
      * POST /api/users/saved/{projectId}
      * Save a project. Idempotent — safe to call if already saved.
      */
+    @Operation(summary = "Save a project",
+            security = @SecurityRequirement(name = "bearerAuth"))
     @PreAuthorize("isAuthenticated()")
     @PostMapping("/{projectId}")
     public ResponseEntity<ApiResponse<Void>> saveProject(
@@ -69,6 +79,8 @@ public class SavedProjectController {
      * DELETE /api/users/saved/{projectId}
      * Unsave a project. Idempotent — safe to call if not saved.
      */
+    @Operation(summary = "Unsave a project",
+            security = @SecurityRequirement(name = "bearerAuth"))
     @PreAuthorize("isAuthenticated()")
     @DeleteMapping("/{projectId}")
     public ResponseEntity<ApiResponse<Void>> unsaveProject(
@@ -85,6 +97,9 @@ public class SavedProjectController {
      * Toggle save state. Returns { saved: true/false } for the new state.
      * Used by the bookmark button on the project detail page.
      */
+    @Operation(summary = "Toggle save state",
+            description = "Returns { saved: true/false } for new state.",
+            security = @SecurityRequirement(name = "bearerAuth"))
     @PreAuthorize("isAuthenticated()")
     @PutMapping("/{projectId}/toggle")
     public ResponseEntity<ApiResponse<Map<String, Boolean>>> toggleSaved(

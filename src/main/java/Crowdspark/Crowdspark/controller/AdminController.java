@@ -23,6 +23,9 @@ import Crowdspark.Crowdspark.service.KycService;
 import Crowdspark.Crowdspark.service.PayoutService;
 import Crowdspark.Crowdspark.service.RefundService;
 import Crowdspark.Crowdspark.service.UserService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -37,6 +40,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/admin")
 @RequiredArgsConstructor
+@Tag(name = "Admin", description = "Project approval, KYC review, user management, payouts, refunds. ADMIN role required.")
 public class AdminController {
 
     private final AdminService          adminService;
@@ -45,29 +49,32 @@ public class AdminController {
     private final ContactMessageService contactMessageService;
     private final PayoutService         payoutService;
     private final RefundService         refundService;
-    // BUG A FIX: inject ProjectRepository as an instance (was incorrectly called as static)
     private final ProjectRepository     projectRepository;
 
     // ─── Projects ─────────────────────────────────────────────────────────────
 
+    @Operation(summary = "Get project full details", security = @SecurityRequirement(name = "bearerAuth"))
     @PreAuthorize("hasRole('ADMIN')")
     @GetMapping("/projects/{id}")
     public ResponseEntity<ApiResponse<ProjectFullDetailsResponse>> getProjectDetail(@PathVariable Long id) {
         return ResponseEntity.ok(ApiResponse.ok(adminService.getProjectDetail(id)));
     }
 
+    @Operation(summary = "Get pending projects", security = @SecurityRequirement(name = "bearerAuth"))
     @PreAuthorize("hasRole('ADMIN')")
     @GetMapping("/projects/pending")
     public ResponseEntity<ApiResponse<List<AdminProjectListResponse>>> getPendingProjects() {
         return ResponseEntity.ok(ApiResponse.ok(adminService.getPendingProjects()));
     }
 
+    @Operation(summary = "Get all projects", security = @SecurityRequirement(name = "bearerAuth"))
     @PreAuthorize("hasRole('ADMIN')")
     @GetMapping("/projects/all")
     public ResponseEntity<ApiResponse<List<AdminProjectListResponse>>> getAllProjects() {
         return ResponseEntity.ok(ApiResponse.ok(adminService.getAllProjects()));
     }
 
+    @Operation(summary = "Approve a project", security = @SecurityRequirement(name = "bearerAuth"))
     @PreAuthorize("hasRole('ADMIN')")
     @PutMapping("/projects/{id}/approve")
     public ResponseEntity<ApiResponse<Void>> approveProject(@PathVariable Long id) {
@@ -76,6 +83,7 @@ public class AdminController {
                 .success(true).message("Project approved successfully").build());
     }
 
+    @Operation(summary = "Reject a project", security = @SecurityRequirement(name = "bearerAuth"))
     @PreAuthorize("hasRole('ADMIN')")
     @PutMapping("/projects/{id}/reject")
     public ResponseEntity<ApiResponse<Void>> rejectProject(
@@ -88,18 +96,21 @@ public class AdminController {
 
     // ─── KYC ──────────────────────────────────────────────────────────────────
 
+    @Operation(summary = "Get pending KYC submissions", security = @SecurityRequirement(name = "bearerAuth"))
     @PreAuthorize("hasRole('ADMIN')")
     @GetMapping("/kyc/pending")
     public ResponseEntity<ApiResponse<List<KycStatusResponse>>> getPendingKyc() {
         return ResponseEntity.ok(ApiResponse.ok(kycService.getPendingKyc()));
     }
 
+    @Operation(summary = "Get KYC details for a user", security = @SecurityRequirement(name = "bearerAuth"))
     @PreAuthorize("hasRole('ADMIN')")
     @GetMapping("/kyc/{userId}")
     public ResponseEntity<ApiResponse<KycStatusResponse>> getUserKyc(@PathVariable Long userId) {
         return ResponseEntity.ok(ApiResponse.ok(kycService.getMyKycStatus(userId)));
     }
 
+    @Operation(summary = "Approve KYC", security = @SecurityRequirement(name = "bearerAuth"))
     @PreAuthorize("hasRole('ADMIN')")
     @PutMapping("/kyc/{userId}/approve")
     public ResponseEntity<ApiResponse<KycStatusResponse>> approveKyc(
@@ -110,6 +121,7 @@ public class AdminController {
                 kycService.approveKyc(userId, admin.getId())));
     }
 
+    @Operation(summary = "Reject KYC", security = @SecurityRequirement(name = "bearerAuth"))
     @PreAuthorize("hasRole('ADMIN')")
     @PutMapping("/kyc/{userId}/reject")
     public ResponseEntity<ApiResponse<KycStatusResponse>> rejectKyc(
@@ -123,18 +135,21 @@ public class AdminController {
 
     // ─── Contact Messages ─────────────────────────────────────────────────────
 
+    @Operation(summary = "List all contact messages", security = @SecurityRequirement(name = "bearerAuth"))
     @PreAuthorize("hasRole('ADMIN')")
     @GetMapping("/contact-messages")
     public ResponseEntity<ApiResponse<List<ContactMessageResponse>>> getContactMessages() {
         return ResponseEntity.ok(ApiResponse.ok(contactMessageService.getAll()));
     }
 
+    @Operation(summary = "Mark a contact message as read", security = @SecurityRequirement(name = "bearerAuth"))
     @PreAuthorize("hasRole('ADMIN')")
     @PutMapping("/contact-messages/{id}/read")
     public ResponseEntity<ApiResponse<ContactMessageResponse>> markContactMessageRead(@PathVariable Long id) {
         return ResponseEntity.ok(ApiResponse.ok("Message marked read", contactMessageService.markRead(id)));
     }
 
+    @Operation(summary = "Reply to a contact message", security = @SecurityRequirement(name = "bearerAuth"))
     @PreAuthorize("hasRole('ADMIN')")
     @PutMapping("/contact-messages/{id}/reply")
     public ResponseEntity<ApiResponse<ContactMessageResponse>> replyContactMessage(
@@ -148,12 +163,14 @@ public class AdminController {
 
     // ─── Users ────────────────────────────────────────────────────────────────
 
+    @Operation(summary = "List all users", security = @SecurityRequirement(name = "bearerAuth"))
     @PreAuthorize("hasRole('ADMIN')")
     @GetMapping("/users")
     public ResponseEntity<ApiResponse<List<UserResponse>>> getAllUsers() {
         return ResponseEntity.ok(ApiResponse.ok(adminService.getAllUsers()));
     }
 
+    @Operation(summary = "Suspend a user", security = @SecurityRequirement(name = "bearerAuth"))
     @PreAuthorize("hasRole('ADMIN')")
     @PutMapping("/users/{id}/suspend")
     public ResponseEntity<ApiResponse<Void>> suspendUser(@PathVariable Long id) {
@@ -162,6 +179,7 @@ public class AdminController {
                 .success(true).message("User suspended").build());
     }
 
+    @Operation(summary = "Activate a user", security = @SecurityRequirement(name = "bearerAuth"))
     @PreAuthorize("hasRole('ADMIN')")
     @PutMapping("/users/{id}/activate")
     public ResponseEntity<ApiResponse<Void>> activateUser(@PathVariable Long id) {
@@ -172,10 +190,8 @@ public class AdminController {
 
     // ─── Payouts ──────────────────────────────────────────────────────────────
 
-    /**
-     * POST /admin/projects/{id}/payout
-     * Initiate payout to creator for a FUNDED project.
-     */
+    @Operation(summary = "Initiate creator payout", description = "Triggers Razorpay payout to creator's UPI for a FUNDED project.",
+            security = @SecurityRequirement(name = "bearerAuth"))
     @PreAuthorize("hasRole('ADMIN')")
     @PostMapping("/projects/{id}/payout")
     public ResponseEntity<ApiResponse<PayoutResponse>> initiatePayout(
@@ -187,20 +203,14 @@ public class AdminController {
                 .body(ApiResponse.created(response));
     }
 
-    /**
-     * GET /admin/payouts
-     * List all payouts with their current status.
-     */
+    @Operation(summary = "List all payouts", security = @SecurityRequirement(name = "bearerAuth"))
     @PreAuthorize("hasRole('ADMIN')")
     @GetMapping("/payouts")
     public ResponseEntity<ApiResponse<List<PayoutResponse>>> getAllPayouts() {
         return ResponseEntity.ok(ApiResponse.ok(payoutService.getAllPayouts()));
     }
 
-    /**
-     * GET /admin/projects/{id}/payout
-     * Get payout status for a specific project.
-     */
+    @Operation(summary = "Get payout status for a project", security = @SecurityRequirement(name = "bearerAuth"))
     @PreAuthorize("hasRole('ADMIN')")
     @GetMapping("/projects/{id}/payout")
     public ResponseEntity<ApiResponse<PayoutResponse>> getProjectPayout(@PathVariable Long id) {
@@ -209,10 +219,7 @@ public class AdminController {
 
     // ─── Refunds ──────────────────────────────────────────────────────────────
 
-    /**
-     * GET /admin/projects/{id}/refunds
-     * List all refunds for a specific project (admin view).
-     */
+    @Operation(summary = "List project refunds", security = @SecurityRequirement(name = "bearerAuth"))
     @PreAuthorize("hasRole('ADMIN')")
     @GetMapping("/projects/{id}/refunds")
     public ResponseEntity<ApiResponse<List<RefundResponse>>> getProjectRefunds(
@@ -220,18 +227,10 @@ public class AdminController {
         return ResponseEntity.ok(ApiResponse.ok(refundService.getRefundsForProject(id)));
     }
 
-    /**
-     * POST /admin/projects/{id}/refunds/retry
-     * Retry all failed/pending refunds for a FAILED project.
-     *
-     * BUG A FIX: projectRepository is now injected (was called as static).
-     * BUG B FIX: now calls processRefundsForProject() to actually trigger retries
-     *            (was wrongly calling getRefundsForProject() which only reads).
-     */
+    @Operation(summary = "Retry failed refunds", security = @SecurityRequirement(name = "bearerAuth"))
     @PreAuthorize("hasRole('ADMIN')")
     @PostMapping("/projects/{id}/refunds/retry")
     public ResponseEntity<ApiResponse<Void>> retryProjectRefunds(@PathVariable Long id) {
-        // BUG A FIX: use injected projectRepository instance, not static call
         Project project = projectRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND, "Project not found"));
@@ -242,8 +241,6 @@ public class AdminController {
                             + project.getStatus());
         }
 
-        // BUG B FIX: call processRefundsForProject() to actually retry,
-        // not getRefundsForProject() which is a read-only query
         refundService.processRefundsForProject(project);
 
         return ResponseEntity.ok(ApiResponse.<Void>builder()

@@ -10,6 +10,9 @@ import Crowdspark.Crowdspark.dto.PaymentVerifyRequest;
 import Crowdspark.Crowdspark.entity.User;
 import Crowdspark.Crowdspark.service.PaymentService;
 import Crowdspark.Crowdspark.service.UserService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -23,19 +26,16 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 @RequestMapping("/api/payment")
 @RequiredArgsConstructor
+@Tag(name = "Payments", description = "Razorpay payment gateway — create order and verify payment")
 public class PaymentController {
 
     private final PaymentService paymentService;
     private final UserService    userService;
 
-    /**
-     * STEP 1 — Backer clicks "Back this project"
-     * Creates a Razorpay order and a PENDING donation.
-     * Returns order details that the frontend passes to Razorpay checkout.js.
-     *
-     * POST /api/payment/create-order
-     */
     @PreAuthorize("isAuthenticated()")
+    @Operation(summary = "Create Razorpay order",
+            description = "Step 1: Creates a Razorpay order and PENDING donation. Returns order details for checkout.js.",
+            security = @SecurityRequirement(name = "bearerAuth"))
     @PostMapping("/create-order")
     public ResponseEntity<ApiResponse<PaymentOrderResponse>> createOrder(
             @Valid @RequestBody PaymentOrderRequest request,
@@ -47,13 +47,10 @@ public class PaymentController {
                 .body(ApiResponse.created(response));
     }
 
-    /**
-     * STEP 2 — Called by frontend after Razorpay checkout succeeds.
-     * Verifies HMAC signature, marks donation SUCCESS, updates project totals.
-     *
-     * POST /api/payment/verify
-     */
     @PreAuthorize("isAuthenticated()")
+    @Operation(summary = "Verify payment signature",
+            description = "Step 2: Called after Razorpay checkout. Verifies HMAC signature and confirms donation.",
+            security = @SecurityRequirement(name = "bearerAuth"))
     @PostMapping("/verify")
     public ResponseEntity<ApiResponse<DonationResponse>> verify(
             @Valid @RequestBody PaymentVerifyRequest request,
