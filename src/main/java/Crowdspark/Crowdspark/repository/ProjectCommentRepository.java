@@ -30,4 +30,5 @@ public interface ProjectCommentRepository extends JpaRepository<ProjectComment, 
     """)
     long countActiveByProjectId(@Param("projectId") Long projectId);
     List<ProjectComment> findByAuthor_IdOrderByCreatedAtDesc(Long authorId);
+
 }
