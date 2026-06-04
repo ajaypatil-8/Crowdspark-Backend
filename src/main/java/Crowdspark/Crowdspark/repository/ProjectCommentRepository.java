@@ -6,7 +6,10 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.domain.Sort;
 import org.springframework.data.repository.query.Param;
+
+import java.util.List;
 
 public interface ProjectCommentRepository extends JpaRepository<ProjectComment, Long> {
 
@@ -26,4 +29,5 @@ public interface ProjectCommentRepository extends JpaRepository<ProjectComment, 
         WHERE c.project.id = :projectId AND c.deleted = false
     """)
     long countActiveByProjectId(@Param("projectId") Long projectId);
+    List<ProjectComment> findByAuthor_IdOrderByCreatedAtDesc(Long authorId);
 }

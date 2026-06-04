@@ -14,4 +14,5 @@ public interface CampaignUpdateRepository extends JpaRepository<CampaignUpdate, 
     long countByProject_Id(Long projectId);
 
     Optional<CampaignUpdate> findByIdAndProject_Id(Long id, Long projectId);
+    List<CampaignUpdate> findByAuthor_IdOrderByCreatedAtDesc(Long authorId);
 }
