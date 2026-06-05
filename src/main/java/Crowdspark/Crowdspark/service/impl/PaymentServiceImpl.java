@@ -17,6 +17,7 @@ import Crowdspark.Crowdspark.repository.DonationRepository;
 import Crowdspark.Crowdspark.repository.ProjectRepository;
 import Crowdspark.Crowdspark.repository.RewardTierRepository;
 import Crowdspark.Crowdspark.repository.UserRepository;
+import Crowdspark.Crowdspark.service.FundingStreamService;
 import Crowdspark.Crowdspark.service.NotificationService;
 import Crowdspark.Crowdspark.service.PaymentService;
 import com.razorpay.Order;
@@ -48,6 +49,7 @@ public class PaymentServiceImpl implements PaymentService {
     private final UserRepository        userRepository;
     private final RewardTierRepository  rewardTierRepository;
     private final NotificationService   notificationService;
+    private final FundingStreamService fundingStreamService;
 
     @Value("${razorpay.key-id}")
     private String razorpayKeyId;
@@ -198,6 +200,11 @@ public class PaymentServiceImpl implements PaymentService {
             notificationService.notifyCreatorGoalReached(project);
         }
         projectRepository.save(project);
+
+        fundingStreamService.broadcast(
+                project.getId(),
+                fundingStreamService.buildSnapshot(project.getId())
+        );
 
         // 7. Update backer stats
         User backer = donation.getBacker();

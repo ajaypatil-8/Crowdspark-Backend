@@ -11,6 +11,7 @@ import Crowdspark.Crowdspark.entity.type.PaymentStatus;
 import Crowdspark.Crowdspark.entity.type.ProjectStatus;
 import Crowdspark.Crowdspark.repository.DonationRepository;
 import Crowdspark.Crowdspark.repository.ProjectRepository;
+import Crowdspark.Crowdspark.service.FundingStreamService;
 import Crowdspark.Crowdspark.service.NotificationService;
 import Crowdspark.Crowdspark.service.RefundService;
 import lombok.RequiredArgsConstructor;
@@ -31,7 +32,8 @@ public class DeadlineSchedulerService {
     private final ProjectRepository   projectRepository;
     private final DonationRepository  donationRepository;
     private final NotificationService notificationService;
-    private final RefundService       refundService;          // ← NEW
+    private final RefundService       refundService;
+    private final FundingStreamService fundingStreamService;// ← NEW
 
     @Scheduled(cron = "0 0 * * * *")
     @Transactional
@@ -65,6 +67,10 @@ public class DeadlineSchedulerService {
             // ── FUNDED ────────────────────────────────────────────────────────
             project.setStatus(ProjectStatus.FUNDED);
             projectRepository.save(project);
+            fundingStreamService.broadcast(
+                    project.getId(),
+                    fundingStreamService.buildSnapshot(project.getId())
+            );
             log.info("Project id={} \"{}\" → FUNDED (raised {} of {})",
                     project.getId(), project.getTitle(),
                     project.getCurrentAmount(), project.getGoalAmount());
@@ -76,6 +82,10 @@ public class DeadlineSchedulerService {
             // ── FAILED ────────────────────────────────────────────────────────
             project.setStatus(ProjectStatus.FAILED);
             projectRepository.save(project);
+            fundingStreamService.broadcast(
+                    project.getId(),
+                    fundingStreamService.buildSnapshot(project.getId())
+            );
             log.info("Project id={} \"{}\" → FAILED (raised {} of {})",
                     project.getId(), project.getTitle(),
                     project.getCurrentAmount(), project.getGoalAmount());
