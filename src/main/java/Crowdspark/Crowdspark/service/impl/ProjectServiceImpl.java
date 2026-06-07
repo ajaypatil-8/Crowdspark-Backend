@@ -1,7 +1,9 @@
 // src/main/java/Crowdspark/Crowdspark/service/impl/ProjectServiceImpl.java
-// CHANGE: getProjectDetails now allows APPROVED, FUNDED, FAILED, CLOSED statuses.
-// Previously it threw 404 for anything not APPROVED — meaning funded/failed
-// campaigns would disappear from public view after deadline, which is wrong.
+// CHANGES:
+//   exploreProjects() now routes to FTS query when keyword is present,
+//   falls back to JPQL query for no-keyword browsing (better performance).
+//   Added ENDING_SOON sort option.
+//   Added minGoal/maxGoal in-memory filtering.
 
 package Crowdspark.Crowdspark.service.impl;
 
@@ -30,6 +32,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -54,19 +57,18 @@ public class ProjectServiceImpl implements ProjectService {
     private final RewardTierRepository rewardTierRepository;
     private final DonationRepository   donationRepository;
 
-    // Statuses that are publicly viewable on the project detail page
+    // Statuses publicly viewable on the detail page
     private static final Set<ProjectStatus> VIEWABLE = Set.of(
-            ProjectStatus.APPROVED,
-            ProjectStatus.FUNDED,
-            ProjectStatus.FAILED,
-            ProjectStatus.CLOSED
+            ProjectStatus.APPROVED, ProjectStatus.FUNDED,
+            ProjectStatus.FAILED,   ProjectStatus.CLOSED
     );
+
+    // ── createProject ─────────────────────────────────────────────────────────
 
     @Override
     @Transactional
     @CacheEvict(value = {"exploreFeed", "projectDetails"}, allEntries = true)
     public Long createProject(CreateProjectRequest request, Long creatorId) {
-
         User creator = userRepository.findById(creatorId)
                 .orElseThrow(() -> new RuntimeException("Creator not found"));
 
@@ -85,34 +87,34 @@ public class ProjectServiceImpl implements ProjectService {
         project.setCategories(categories);
 
         boolean hasThumbnail = false;
-        for (CreateProjectRequest.ProjectMediaRequest mediaReq : request.getMedia()) {
+        for (CreateProjectRequest.ProjectMediaRequest m : request.getMedia()) {
             ProjectMedia media = new ProjectMedia();
-            media.setMediaUrl(mediaReq.getMediaUrl());
-            media.setMediaType(mediaReq.getMediaType());
-            media.setUsage(mediaReq.getUsage());
-            media.setDisplayOrder(mediaReq.getDisplayOrder());
+            media.setMediaUrl(m.getMediaUrl());
+            media.setMediaType(m.getMediaType());
+            media.setUsage(m.getUsage());
+            media.setDisplayOrder(m.getDisplayOrder());
             media.setProject(project);
-            if (mediaReq.getUsage() == MediaUsage.THUMBNAIL) hasThumbnail = true;
+            if (m.getUsage() == MediaUsage.THUMBNAIL) hasThumbnail = true;
             project.getMedia().add(media);
         }
-
         if (!hasThumbnail) throw new RuntimeException("Project must have at least one THUMBNAIL image");
 
         Project saved = projectRepository.save(project);
 
-        if (request.getRewardTiers() != null && !request.getRewardTiers().isEmpty()) {
-            for (RewardTierRequest tierReq : request.getRewardTiers()) {
+        if (request.getRewardTiers() != null) {
+            for (RewardTierRequest t : request.getRewardTiers()) {
                 RewardTier tier = new RewardTier();
-                tier.setTitle(tierReq.getTitle());
-                tier.setDescription(tierReq.getDescription());
-                tier.setMinimumAmount(tierReq.getMinimumAmount());
+                tier.setTitle(t.getTitle());
+                tier.setDescription(t.getDescription());
+                tier.setMinimumAmount(t.getMinimumAmount());
                 tier.setProject(saved);
                 rewardTierRepository.save(tier);
             }
         }
-
         return saved.getId();
     }
+
+    // ── getProjectFeed ────────────────────────────────────────────────────────
 
     @Override
     public List<ProjectFeedResponse> getProjectFeed() {
@@ -120,161 +122,173 @@ public class ProjectServiceImpl implements ProjectService {
                 .stream().map(this::toFeedResponse).toList();
     }
 
+    // ── getCreatorProjects ────────────────────────────────────────────────────
+
     @Override
     public List<CreatorProjectResponse> getCreatorProjects(Long creatorId) {
         User creator = userRepository.findById(creatorId)
                 .orElseThrow(() -> new RuntimeException("Creator not found"));
-
         return projectRepository.findByCreatorOrderByCreatedAtDesc(creator)
-                .stream().map(project -> {
-                    String thumbnail = project.getMedia().stream()
+                .stream().map(p -> {
+                    String thumb = p.getMedia().stream()
                             .filter(m -> m.getUsage() == MediaUsage.THUMBNAIL)
-                            .map(ProjectMedia::getMediaUrl)
-                            .findFirst().orElse(null);
-
+                            .map(ProjectMedia::getMediaUrl).findFirst().orElse(null);
                     return CreatorProjectResponse.builder()
-                            .id(project.getId())
-                            .title(project.getTitle())
-                            .thumbnailUrl(thumbnail)
-                            .goalAmount(project.getGoalAmount())
-                            .currentAmount(project.getCurrentAmount())
-                            .status(project.getStatus().name())
-                            .rejectionReason(project.getRejectionReason())
-                            .createdAt(project.getCreatedAt())
-                            .deadline(project.getDeadline())
+                            .id(p.getId()).title(p.getTitle())
+                            .thumbnailUrl(thumb)
+                            .goalAmount(p.getGoalAmount())
+                            .currentAmount(p.getCurrentAmount())
+                            .status(p.getStatus().name())
+                            .rejectionReason(p.getRejectionReason())
+                            .createdAt(p.getCreatedAt())
+                            .deadline(p.getDeadline())
                             .build();
                 }).toList();
     }
 
+    // ── getProjectDetails ─────────────────────────────────────────────────────
+
     @Override
     @Cacheable(value = "projectDetails", key = "#projectId")
     public ProjectFullDetailsResponse getProjectDetails(Long projectId) {
-        Project project = projectRepository.findById(projectId)
+        Project p = projectRepository.findById(projectId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Project not found"));
 
-        // ── CHANGED: allow APPROVED, FUNDED, FAILED, CLOSED — only hide DRAFT/PENDING/REJECTED ──
-        if (!VIEWABLE.contains(project.getStatus())) {
+        if (!VIEWABLE.contains(p.getStatus())) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Project not available");
         }
 
-        String categoryName = project.getCategories().isEmpty()
-                ? null : project.getCategories().get(0).getName();
+        String categoryName = p.getCategories().isEmpty() ? null
+                : p.getCategories().get(0).getName();
 
         String thumbnail = null;
-        List<String> previewVideos = new ArrayList<>();
-        List<String> galleryImages = new ArrayList<>();
-        List<String> storyImages   = new ArrayList<>();
-
-        for (ProjectMedia media : project.getMedia()) {
-            if (media.getUsage() == MediaUsage.THUMBNAIL)     thumbnail = media.getMediaUrl();
-            if (media.getUsage() == MediaUsage.CARD_VIDEO)    previewVideos.add(media.getMediaUrl());
-            if (media.getUsage() == MediaUsage.GALLERY_IMAGE) galleryImages.add(media.getMediaUrl());
-            if (media.getUsage() == MediaUsage.STORY_IMAGE)   storyImages.add(media.getMediaUrl());
+        List<String> previewVideos = new ArrayList<>(), galleryImages = new ArrayList<>(),
+                storyImages = new ArrayList<>();
+        for (ProjectMedia m : p.getMedia()) {
+            if (m.getUsage() == MediaUsage.THUMBNAIL)     thumbnail = m.getMediaUrl();
+            if (m.getUsage() == MediaUsage.CARD_VIDEO)    previewVideos.add(m.getMediaUrl());
+            if (m.getUsage() == MediaUsage.GALLERY_IMAGE) galleryImages.add(m.getMediaUrl());
+            if (m.getUsage() == MediaUsage.STORY_IMAGE)   storyImages.add(m.getMediaUrl());
         }
 
-        int fundedPercent = project.getGoalAmount() > 0
-                ? (int) ((project.getCurrentAmount() / project.getGoalAmount()) * 100) : 0;
-        long daysLeft = ChronoUnit.DAYS.between(LocalDateTime.now(), project.getDeadline());
-
-        long backersCount = donationRepository.countByProject_IdAndPaymentStatus(
+        int fundedPct = p.getGoalAmount() > 0
+                ? (int) ((p.getCurrentAmount() / p.getGoalAmount()) * 100) : 0;
+        long daysLeft = ChronoUnit.DAYS.between(LocalDateTime.now(), p.getDeadline());
+        long backers  = donationRepository.countByProject_IdAndPaymentStatus(
                 projectId, PaymentStatus.SUCCESS);
 
-        List<RewardTier> tiers = rewardTierRepository.findByProject_Id(projectId);
-        List<RewardTierResponse> rewards = tiers.stream()
-                .map(t -> RewardTierResponse.builder()
-                        .id(t.getId())
-                        .title(t.getTitle())
+        List<RewardTierResponse> rewards = rewardTierRepository.findByProject_Id(projectId)
+                .stream().map(t -> RewardTierResponse.builder()
+                        .id(t.getId()).title(t.getTitle())
                         .description(t.getDescription())
                         .minimumAmount(t.getMinimumAmount())
-                        .build())
-                .toList();
+                        .build()).toList();
 
         return ProjectFullDetailsResponse.builder()
-                .id(project.getId())
-                .title(project.getTitle())
-                .shortDescription(project.getShortDescription())
-                .fullDescription(project.getFullDescription())
+                .id(p.getId()).title(p.getTitle())
+                .shortDescription(p.getShortDescription())
+                .fullDescription(p.getFullDescription())
                 .category(categoryName)
-                .goalAmount(project.getGoalAmount())
-                .currentAmount(project.getCurrentAmount())
-                .fundedPercentage(fundedPercent)
-                .daysLeft(daysLeft)
-                .deadline(project.getDeadline())
-                .thumbnailUrl(thumbnail)
-                .previewVideos(previewVideos)
-                .galleryImages(galleryImages)
-                .storyImages(storyImages)
-                .rewards(rewards)
-                .backersCount(backersCount)
+                .goalAmount(p.getGoalAmount()).currentAmount(p.getCurrentAmount())
+                .fundedPercentage(fundedPct).daysLeft(daysLeft)
+                .deadline(p.getDeadline())
+                .thumbnailUrl(thumbnail).previewVideos(previewVideos)
+                .galleryImages(galleryImages).storyImages(storyImages)
+                .rewards(rewards).backersCount(backers)
                 .creator(ProjectFullDetailsResponse.CreatorDto.builder()
-                        .id(project.getCreator().getId())
-                        .username(project.getCreator().getUsername())
-                        .profileImage(null)
-                        .about(null)
-                        .build())
+                        .id(p.getCreator().getId())
+                        .username(p.getCreator().getUsername())
+                        .profileImage(null).about(null).build())
                 .build();
     }
 
+    // ── exploreProjects — UPGRADED WITH FTS ───────────────────────────────────
+
     @Override
     public Page<ProjectFeedResponse> exploreProjects(ExploreRequest request) {
-        Sort sort = switch (request.getSort().toUpperCase()) {
-            case "MOST_FUNDED" -> Sort.by(Sort.Direction.DESC, "currentAmount");
-            case "TRENDING"    -> Sort.by(Sort.Direction.DESC, "currentAmount");
-            default            -> Sort.by(Sort.Direction.DESC, "createdAt");
-        };
+        String keyword = (request.getKeyword() != null && !request.getKeyword().isBlank())
+                ? request.getKeyword().trim() : null;
 
-        Pageable pageable = PageRequest.of(request.getPage(), request.getSize(), sort);
+        String sort = request.getSort() != null
+                ? request.getSort().toUpperCase() : "NEWEST";
 
-        String keyword = (request.getKeyword() == null || request.getKeyword().isBlank())
-                ? null : "%" + request.getKeyword().trim().toLowerCase() + "%";
+        Page<Project> projects;
 
-        return projectRepository
-                .findForExplore(request.getCategoryId(), keyword, pageable)
-                .map(this::toFeedResponse);
+        if (keyword != null) {
+            // ── FTS path: keyword present → use PostgreSQL full-text search ──
+            // No sort-based Pageable needed — ORDER BY is in the native query
+            Pageable pageable = PageRequest.of(request.getPage(), request.getSize());
+            projects = projectRepository.searchWithFts(
+                    request.getCategoryId(), keyword, sort, pageable);
+
+        } else {
+            // ── Browse path: no keyword → use fast JPQL + in-DB sorting ──────
+            Sort springSort = switch (sort) {
+                case "MOST_FUNDED", "TRENDING" ->
+                        Sort.by(Sort.Direction.DESC, "currentAmount");
+                case "ENDING_SOON" ->
+                        Sort.by(Sort.Direction.ASC, "deadline");
+                default ->
+                        Sort.by(Sort.Direction.DESC, "createdAt");
+            };
+            Pageable pageable = PageRequest.of(request.getPage(), request.getSize(), springSort);
+            projects = projectRepository.findForExplore(
+                    request.getCategoryId(), null, pageable);
+        }
+
+        // ── Optional in-memory goal range filter ─────────────────────────────
+        // Applied after DB query (goal range filtering is rare and low overhead
+        // for typical page sizes of 12)
+        if (request.getMinGoal() != null || request.getMaxGoal() != null) {
+            List<Project> filtered = projects.getContent().stream()
+                    .filter(p -> {
+                        if (request.getMinGoal() != null && p.getGoalAmount() < request.getMinGoal())
+                            return false;
+                        if (request.getMaxGoal() != null && p.getGoalAmount() > request.getMaxGoal())
+                            return false;
+                        return true;
+                    }).toList();
+
+            projects = new PageImpl<>(filtered, projects.getPageable(), filtered.size());
+        }
+
+        return projects.map(this::toFeedResponse);
     }
+
+    // ── Cache eviction ────────────────────────────────────────────────────────
 
     @CacheEvict(value = {"projectDetails", "exploreFeed"}, allEntries = true)
     public void evictProjectCaches() { }
 
-    // ── shared feed mapper ────────────────────────────────────────────────────
-    private ProjectFeedResponse toFeedResponse(Project project) {
-        String thumbnail    = null;
-        String previewVideo = null;
+    // ── Shared feed mapper ────────────────────────────────────────────────────
 
-        for (ProjectMedia media : project.getMedia()) {
-            if (media.getUsage() == MediaUsage.THUMBNAIL)  thumbnail    = media.getMediaUrl();
-            if (media.getUsage() == MediaUsage.CARD_VIDEO) previewVideo = media.getMediaUrl();
+    private ProjectFeedResponse toFeedResponse(Project p) {
+        String thumbnail = null, previewVideo = null;
+        for (ProjectMedia m : p.getMedia()) {
+            if (m.getUsage() == MediaUsage.THUMBNAIL)  thumbnail    = m.getMediaUrl();
+            if (m.getUsage() == MediaUsage.CARD_VIDEO) previewVideo = m.getMediaUrl();
         }
 
-        int fundedPercent = project.getGoalAmount() > 0
-                ? (int) ((project.getCurrentAmount() / project.getGoalAmount()) * 100) : 0;
-        long daysLeft = ChronoUnit.DAYS.between(LocalDateTime.now(), project.getDeadline());
-        String categoryName = project.getCategories().isEmpty()
-                ? null : project.getCategories().get(0).getName();
-
-        long backersCount = donationRepository.countByProject_IdAndPaymentStatus(
-                project.getId(), PaymentStatus.SUCCESS);
+        int fundedPct = p.getGoalAmount() > 0
+                ? (int) ((p.getCurrentAmount() / p.getGoalAmount()) * 100) : 0;
+        long daysLeft = ChronoUnit.DAYS.between(LocalDateTime.now(), p.getDeadline());
+        String cat    = p.getCategories().isEmpty() ? null : p.getCategories().get(0).getName();
+        long backers  = donationRepository.countByProject_IdAndPaymentStatus(
+                p.getId(), PaymentStatus.SUCCESS);
 
         return ProjectFeedResponse.builder()
-                .id(project.getId())
-                .title(project.getTitle())
-                .shortDescription(project.getShortDescription())
-                .category(categoryName)
-                .thumbnailUrl(thumbnail)
-                .previewVideoUrl(previewVideo)
-                .goalAmount(project.getGoalAmount())
-                .currentAmount(project.getCurrentAmount())
-                .fundedPercentage(fundedPercent)
-                .daysLeft((int) daysLeft)
-                .backersCount(backersCount)
+                .id(p.getId()).title(p.getTitle())
+                .shortDescription(p.getShortDescription())
+                .category(cat)
+                .thumbnailUrl(thumbnail).previewVideoUrl(previewVideo)
+                .goalAmount(p.getGoalAmount()).currentAmount(p.getCurrentAmount())
+                .fundedPercentage(fundedPct).daysLeft((int) daysLeft)
+                .backersCount(backers)
                 .creator(ProjectFeedResponse.CreatorDto.builder()
-                        .id(project.getCreator().getId())
-                        .username(project.getCreator().getUsername())
-                        .profileImage(null)
-                        .about(null)
-                        .joinedAt(null)
-                        .totalProjects(0L)
-                        .totalBackers(0L)
+                        .id(p.getCreator().getId())
+                        .username(p.getCreator().getUsername())
+                        .profileImage(null).about(null)
+                        .joinedAt(null).totalProjects(0L).totalBackers(0L)
                         .build())
                 .build();
     }
