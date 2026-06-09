@@ -13,8 +13,9 @@ public enum NotificationType {
     CAMPAIGN_FUNDED,
     CAMPAIGN_FAILED,
     CAMPAIGN_UPDATE,
-    COMMENT_POSTED,        // ← NEW: backer commented on creator's project
-    COMMENT_REPLIED,       // ← NEW: someone replied to your comment
+    COMMENT_POSTED,
+    COMMENT_REPLIED,
+    NEW_FOLLOWER,
     PAYOUT_INITIATED,
     PAYOUT_FAILED,
     REFUND_PROCESSED,

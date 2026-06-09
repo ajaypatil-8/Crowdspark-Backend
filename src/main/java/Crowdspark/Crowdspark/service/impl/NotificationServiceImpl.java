@@ -382,5 +382,19 @@ public class NotificationServiceImpl implements NotificationService {
     }
 
 
+    @Async
+    @Override
+    public void notifyUserNewFollower(User target, User follower) {
+        save(
+                target,
+                NotificationType.NEW_FOLLOWER,
+                "🎉 New follower!",
+                "@" + follower.getUsername() + " started following you. "
+                        + "They'll see your new campaigns in their feed.",
+                "/dashboard/profile",
+                follower.getId()
+        );
+    }
+
 
 }

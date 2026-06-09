@@ -136,8 +136,14 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.GET, "/api/projects/*/rewards").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/projects/*/updates").permitAll()   // Feature #5
                 .requestMatchers(HttpMethod.GET, "/api/projects/*/comments").permitAll()
-                    .requestMatchers(HttpMethod.GET, "/api/projects/*/funding-stream").permitAll()
-                    .requestMatchers(HttpMethod.POST, "/api/projects/*/view").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/projects/*/funding-stream").permitAll()
+                .requestMatchers(HttpMethod.POST, "/api/projects/*/view").permitAll()
+
+                .requestMatchers(HttpMethod.GET, "/api/users/*/followers").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/users/*/following").permitAll()
+                .requestMatchers("/api/feed/followed").authenticated()
+                .requestMatchers("/api/users/*/follow").authenticated()
+                .requestMatchers("/api/users/*/follow/status").authenticated()
 
                 // Authenticated-only auth actions
                 .requestMatchers("/auth/send-verification-email").authenticated()

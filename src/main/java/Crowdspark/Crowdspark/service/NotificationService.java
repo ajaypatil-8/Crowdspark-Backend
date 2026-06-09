@@ -50,4 +50,6 @@ public interface NotificationService {
     void notifyBackerCampaignUpdate(User backer, Project project, String updateTitle);
     void notifyCreatorNewComment(Project project, User commenter);
     void notifyUserCommentReplied(User recipient, Project project, String replierUsername);
+
+    void notifyUserNewFollower(User target, User follower);
 }
