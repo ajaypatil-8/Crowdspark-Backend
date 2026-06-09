@@ -136,7 +136,8 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.GET, "/api/projects/*/rewards").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/projects/*/updates").permitAll()   // Feature #5
                 .requestMatchers(HttpMethod.GET, "/api/projects/*/comments").permitAll()
-                    .requestMatchers(HttpMethod.GET, "/api/projects/*/funding-stream").permitAll()// Feature #6
+                    .requestMatchers(HttpMethod.GET, "/api/projects/*/funding-stream").permitAll()
+                    .requestMatchers(HttpMethod.POST, "/api/projects/*/view").permitAll()
 
                 // Authenticated-only auth actions
                 .requestMatchers("/auth/send-verification-email").authenticated()
