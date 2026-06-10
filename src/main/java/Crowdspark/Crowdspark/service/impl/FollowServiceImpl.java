@@ -133,7 +133,7 @@ public class FollowServiceImpl implements FollowService {
 
     private FollowResponse toFollowResponse(User user, LocalDateTime followedAt) {
         boolean isCreator = user.getRoles() != null &&
-                user.getRoles().contains(Role.ROLE_CREATOR);
+                user.getRoles().contains(Role.CREATOR);
         long followerCount = followRepository.countByFollowing_Id(user.getId());
         long totalProjects = projectRepository.countByCreator(user);
 
