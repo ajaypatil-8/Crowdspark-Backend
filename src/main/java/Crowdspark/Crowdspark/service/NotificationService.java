@@ -52,4 +52,5 @@ public interface NotificationService {
     void notifyUserCommentReplied(User recipient, Project project, String replierUsername);
 
     void notifyUserNewFollower(User target, User follower);
+    void notifyBackerMilestoneCompleted(User backer, Project project, String milestoneTitle);
 }

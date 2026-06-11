@@ -396,5 +396,20 @@ public class NotificationServiceImpl implements NotificationService {
         );
     }
 
+    @Override
+    @Async
+    public void notifyBackerMilestoneCompleted(User backer, Project project,
+                                               String milestoneTitle) {
+        save(
+                backer,
+                NotificationType.MILESTONE_COMPLETED,
+                "🏁 Milestone reached: " + milestoneTitle,
+                "The campaign \"" + project.getTitle() + "\" just completed a milestone: \""
+                        + milestoneTitle + "\". Check the project page for details.",
+                "/projects/" + project.getId(),
+                project.getId()
+        );
+    }
+
 
 }
