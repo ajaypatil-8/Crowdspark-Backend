@@ -20,6 +20,7 @@ import Crowdspark.Crowdspark.repository.UserRepository;
 import Crowdspark.Crowdspark.service.FundingStreamService;
 import Crowdspark.Crowdspark.service.NotificationService;
 import Crowdspark.Crowdspark.service.PaymentService;
+import Crowdspark.Crowdspark.service.RewardClaimService;
 import com.razorpay.Order;
 import com.razorpay.RazorpayClient;
 import com.razorpay.RazorpayException;
@@ -50,6 +51,7 @@ public class PaymentServiceImpl implements PaymentService {
     private final RewardTierRepository  rewardTierRepository;
     private final NotificationService   notificationService;
     private final FundingStreamService fundingStreamService;
+    private final RewardClaimService rewardClaimService;
 
     @Value("${razorpay.key-id}")
     private String razorpayKeyId;
@@ -184,6 +186,7 @@ public class PaymentServiceImpl implements PaymentService {
 
         // 5. Mark donation SUCCESS
         donation.setPaymentStatus(PaymentStatus.SUCCESS);
+        rewardClaimService.createClaimForDonation(donation);
         donation.setTransactionId(request.getRazorpayPaymentId());
         donation.setPaidAt(LocalDateTime.now());
         donationRepository.save(donation);

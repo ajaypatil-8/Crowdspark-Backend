@@ -53,4 +53,8 @@ public interface NotificationService {
 
     void notifyUserNewFollower(User target, User follower);
     void notifyBackerMilestoneCompleted(User backer, Project project, String milestoneTitle);
+
+    void sendGeneralNotification(User recipient, String title, String message,
+                                 String link, Long referenceId);
+
 }
