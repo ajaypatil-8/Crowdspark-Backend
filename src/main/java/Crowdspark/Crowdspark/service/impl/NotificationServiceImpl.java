@@ -18,6 +18,7 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
+import Crowdspark.Crowdspark.service.PushNotificationService;
 
 import java.time.LocalDateTime;
 
@@ -26,10 +27,12 @@ import java.time.LocalDateTime;
 public class NotificationServiceImpl implements NotificationService {
 
     private final NotificationRepository notificationRepository;
+    private final PushNotificationService pushNotificationService;
 
     // ── internal helper ───────────────────────────────────────────────────────
     private void save(User recipient, NotificationType type,
                       String title, String message, String link, Long referenceId) {
+        // 1. Persist in-app notification
         Notification n = new Notification();
         n.setRecipient(recipient);
         n.setType(type);
@@ -38,7 +41,17 @@ public class NotificationServiceImpl implements NotificationService {
         n.setLink(link);
         n.setReferenceId(referenceId);
         notificationRepository.save(n);
+
+        // 2. Fire web push to all registered devices (async, non-blocking)
+        pushNotificationService.sendToUser(
+                recipient,
+                title,
+                message,
+                link != null ? link : "/dashboard",
+                null   // use default icon set in the service
+        );
     }
+
 
     private String fmt(Double amount) {
         if (amount == null) return "₹0";

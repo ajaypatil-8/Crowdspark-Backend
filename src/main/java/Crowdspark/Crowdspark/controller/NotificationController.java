@@ -15,6 +15,11 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
+import Crowdspark.Crowdspark.dto.FcmSubscribeRequest;
+import Crowdspark.Crowdspark.service.PushNotificationService;
+import jakarta.validation.Valid;
+import org.springframework.http.HttpStatus;
+import org.springframework.security.access.prepost.PreAuthorize;
 
 import java.util.Map;
 
@@ -26,6 +31,7 @@ public class NotificationController {
 
     private final NotificationService notificationService;
     private final UserService         userService;
+    private final PushNotificationService pushNotificationService;
 
     /** GET /api/notifications?page=0&size=20 */
     @Operation(summary = "Get notifications (paginated)", security = @SecurityRequirement(name = "bearerAuth"))
@@ -94,5 +100,48 @@ public class NotificationController {
         User user = userService.getByUsername(username);
         notificationService.deleteAllNotifications(user.getId());
         return ResponseEntity.ok(ApiResponse.ok("All notifications cleared", null));
+    }
+
+
+    // ── POST /api/notifications/subscribe ───────────────────────────────────
+
+    @Operation(
+            summary  = "Register FCM token",
+            description = "Call after the browser grants notification permission. " +
+                    "Idempotent — safe to call on every page load.",
+            security = @SecurityRequirement(name = "bearerAuth")
+    )
+    @PreAuthorize("isAuthenticated()")
+    @PostMapping("/subscribe")
+    public ResponseEntity<ApiResponse<Void>> subscribe(
+            @Valid @RequestBody FcmSubscribeRequest request,
+            @AuthenticationPrincipal String username
+    ) {
+        User user = userService.getByUsername(username);
+        pushNotificationService.subscribe(user.getId(), request.getToken(),
+                request.getDeviceHint());
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.<Void>builder()
+                        .success(true).message("Push notifications enabled").build());
+    }
+
+    // ── DELETE /api/notifications/unsubscribe ────────────────────────────────
+
+    @Operation(
+            summary  = "Unregister FCM token",
+            description = "Remove a specific device token (user turned off push notifications).",
+            security = @SecurityRequirement(name = "bearerAuth")
+    )
+    @PreAuthorize("isAuthenticated()")
+    @DeleteMapping("/unsubscribe")
+    public ResponseEntity<ApiResponse<Void>> unsubscribe(
+            @Valid @RequestBody FcmSubscribeRequest request,
+            @AuthenticationPrincipal String username
+    ) {
+        User user = userService.getByUsername(username);
+        pushNotificationService.unsubscribe(user.getId(), request.getToken());
+        return ResponseEntity.ok(
+                ApiResponse.<Void>builder()
+                        .success(true).message("Push notifications disabled").build());
     }
 }
