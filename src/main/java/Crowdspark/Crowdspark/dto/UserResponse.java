@@ -73,4 +73,6 @@ public class UserResponse {
     private Integer totalProjectsCreated;
     private Double totalFundsRaised;
     private KycStatus kycStatus;
+
+    private boolean totpEnabled;
 }

@@ -47,6 +47,29 @@ public class JwtUtil {
     }
 
 
+    public String generatePendingTotpToken(User user) {
+        return Jwts.builder()
+                .setSubject(String.valueOf(user.getId()))
+                .claim("username", user.getUsername())
+                .claim("type", "pending_totp")
+                .setIssuedAt(new Date())
+                .setExpiration(new Date(System.currentTimeMillis() + 5 * 60 * 1_000L)) // 5 min
+                .signWith(secretKey)
+                .compact();
+    }
+
+    public boolean isPendingTotpToken(String token) {
+        try {
+            Claims claims = extractClaims(token);
+            return "pending_totp".equals(claims.get("type", String.class));
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+
+
+
     public Claims extractClaims(String token) {
         try {
             return Jwts.parserBuilder()

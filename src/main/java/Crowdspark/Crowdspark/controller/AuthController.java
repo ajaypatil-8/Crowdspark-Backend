@@ -82,20 +82,44 @@ public class AuthController {
     public ResponseEntity<Crowdspark.Crowdspark.dto.ApiResponse<LoginResponse>> login(
             @Valid @RequestBody LoginRequest request,
             HttpServletResponse response) {
+
         User user = authService.login(request.getIdentifier(), request.getPassword());
-        String accessToken = jwtUtil.generateAccessToken(user);
-        RefreshToken refreshToken = refreshTokenService.create(user.getId());
+
+        // ── 2FA gate ──────────────────────────────────────────────────────────
+        if (user.isTotpEnabled()) {
+            // Credentials valid but TOTP code still required.
+            // Return a short-lived pending token — NO cookies set yet.
+            String pendingToken = jwtUtil.generatePendingTotpToken(user);
+            logger.info("TOTP required for userId={}", user.getId());
+            return ResponseEntity.ok(
+                    Crowdspark.Crowdspark.dto.ApiResponse.ok(
+                            "TOTP verification required",
+                            LoginResponse.builder()
+                                    .totpRequired(true)
+                                    .pendingToken(pendingToken)
+                                    .build()));
+        }
+
+        // ── Normal login (no 2FA) ─────────────────────────────────────────────
+        String accessToken    = jwtUtil.generateAccessToken(user);
+        RefreshToken refresh  = refreshTokenService.create(user.getId());
 
         ResponseCookie accessCookie = ResponseCookie.from("accessToken", accessToken)
                 .httpOnly(true).secure(false).path("/").sameSite("Lax").maxAge(60 * 60).build();
-        ResponseCookie refreshCookie = ResponseCookie.from("refreshToken", refreshToken.getToken())
+        ResponseCookie refreshCookie = ResponseCookie.from("refreshToken", refresh.getToken())
                 .httpOnly(true).secure(false).path("/").sameSite("Lax").maxAge(7 * 24 * 60 * 60).build();
 
         response.addHeader("Set-Cookie", accessCookie.toString());
         response.addHeader("Set-Cookie", refreshCookie.toString());
 
-        return ResponseEntity.ok(Crowdspark.Crowdspark.dto.ApiResponse.ok("Login successful",
-                new LoginResponse(accessToken, refreshToken.getToken())));
+        logger.info("User logged in: username={}, id={}", user.getUsername(), user.getId());
+        return ResponseEntity.ok(
+                Crowdspark.Crowdspark.dto.ApiResponse.ok(
+                        "Login successful",
+                        LoginResponse.builder()
+                                .accessToken(accessToken)
+                                .refreshToken(refresh.getToken())
+                                .build()));
     }
 
     @Operation(summary = "Refresh access token",
@@ -112,7 +136,10 @@ public class AuthController {
         String newAccessToken = jwtUtil.generateAccessToken(user);
         logger.info("Refresh token rotated for userId={}", user.getId());
         return ResponseEntity.ok(Crowdspark.Crowdspark.dto.ApiResponse.ok("Token refreshed",
-                new LoginResponse(newAccessToken, newToken.getToken())));
+                LoginResponse.builder()
+                        .accessToken(newAccessToken)
+                        .refreshToken(newToken.getToken())
+                        .build()));
     }
 
     @Operation(summary = "Logout", description = "Revokes all refresh tokens for the current user.",

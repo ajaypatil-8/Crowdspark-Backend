@@ -55,6 +55,15 @@ public class User {
     private boolean isEnabled = true;
     private boolean isLocked = false;
 
+
+    @Column(name = "totp_secret", length = 64)
+    private String totpSecret;
+
+
+    @Column(name = "totp_enabled", nullable = false)
+    private boolean totpEnabled = false;
+
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private AccountStatus accountStatus = AccountStatus.ACTIVE;

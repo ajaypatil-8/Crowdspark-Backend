@@ -138,7 +138,7 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.GET, "/api/projects/*/comments").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/projects/*/funding-stream").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/projects/*/view").permitAll()
-
+                .requestMatchers("/auth/totp/verify-login").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/users/*/followers").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/users/*/following").permitAll()
                 .requestMatchers("/api/feed/followed").authenticated()
