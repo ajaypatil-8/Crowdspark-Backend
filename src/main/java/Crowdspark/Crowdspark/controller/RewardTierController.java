@@ -16,7 +16,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 @RestController
-@RequestMapping("/api/projects/{projectId}/rewards")
+@RequestMapping("/api/v1/projects/{projectId}/rewards")
 @RequiredArgsConstructor
 @Tag(name = "Reward Tiers", description = "Campaign reward tiers")
 public class RewardTierController {

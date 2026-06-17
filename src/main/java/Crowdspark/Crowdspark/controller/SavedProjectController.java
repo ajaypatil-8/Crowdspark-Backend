@@ -19,7 +19,7 @@ import java.util.List;
 import java.util.Map;
 
 @RestController
-@RequestMapping("/api/users/saved")
+@RequestMapping("/api/v1/users/saved")
 @RequiredArgsConstructor
 @Tag(name = "Saved / Watchlist", description = "Save and manage a user's watchlist of projects")
 public class SavedProjectController {

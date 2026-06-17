@@ -24,7 +24,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import java.util.Map;
 
 @RestController
-@RequestMapping("/api/notifications")
+@RequestMapping("/api/v1/notifications")
 @RequiredArgsConstructor
 @Tag(name = "Notifications", description = "In-app notifications — list, mark read, delete")
 public class NotificationController {

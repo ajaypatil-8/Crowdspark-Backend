@@ -22,7 +22,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 @RestController
-@RequestMapping("/api/projects/{projectId}/milestones")
+@RequestMapping("/api/v1/projects/{projectId}/milestones")
 @RequiredArgsConstructor
 @Tag(name = "Milestones", description = "Creator-managed project milestones with backer notifications on completion")
 public class ProjectMilestoneController {

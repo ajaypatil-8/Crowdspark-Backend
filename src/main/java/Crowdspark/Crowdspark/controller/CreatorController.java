@@ -22,7 +22,7 @@ import org.springframework.web.multipart.MultipartFile;
 import java.util.Map;
 
 @RestController
-@RequestMapping("/api/creator")
+@RequestMapping("/api/v1/creator")
 @RequiredArgsConstructor
 @Tag(name = "Creator KYC", description = "KYC submission and phone OTP verification for creator upgrade")
 public class CreatorController {

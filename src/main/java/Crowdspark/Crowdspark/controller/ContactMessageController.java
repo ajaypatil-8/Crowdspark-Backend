@@ -16,7 +16,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@RequestMapping("/api/contact")
+@RequestMapping("/api/v1/contact")
 @RequiredArgsConstructor
 @Tag(name = "Contact", description = "Public contact form")
 public class ContactMessageController {

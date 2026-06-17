@@ -21,7 +21,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 @RestController
-@RequestMapping("/api/projects/{projectId}/updates")
+@RequestMapping("/api/v1/projects/{projectId}/updates")
 @RequiredArgsConstructor
 @Tag(name = "Campaign Updates", description = "Creator posts project updates to notify backers")
 public class CampaignUpdateController {

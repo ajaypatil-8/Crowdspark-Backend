@@ -20,7 +20,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
-@RequestMapping("/api/projects/{projectId}/comments")
+@RequestMapping("/api/v1/projects/{projectId}/comments")
 @RequiredArgsConstructor
 @Tag(name = "Comments & Q&A", description = "Backer-creator discussion on project pages")
 public class ProjectCommentController {

@@ -20,7 +20,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 @RestController
-@RequestMapping("/api/donations")
+@RequestMapping("/api/v1/donations")
 @RequiredArgsConstructor
 @Tag(name = "Donations", description = "View donation history for backers and creators")
 public class DonationController {

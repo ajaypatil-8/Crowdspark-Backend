@@ -21,7 +21,7 @@ import java.util.List;
 import java.util.Map;
 
 @RestController
-@RequestMapping("/api/backer")
+@RequestMapping("/api/v1/backer")
 @RequiredArgsConstructor
 @Tag(name = "Backer Dashboard", description = "Backer-specific views — backed projects, refunds, profile")
 public class BackerController {

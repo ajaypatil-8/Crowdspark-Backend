@@ -1,4 +1,8 @@
 // src/main/java/Crowdspark/Crowdspark/config/SecurityConfig.java
+// CHANGES FROM FEATURE #26 (API Versioning):
+//   • All /api/* routes moved to /api/v1/*
+//   • /admin/* moved to /api/v1/admin/*
+//   • /auth/* unchanged (auth is version-stable)
 // CHANGES FROM FEATURE #10:
 //   1. Added .headers() block with: X-Frame-Options, X-Content-Type-Options,
 //      HSTS, Referrer-Policy, Content-Security-Policy, Permissions-Policy
@@ -127,50 +131,50 @@ public class SecurityConfig {
 
                 // Public project browsing
                 .requestMatchers(
-                    "/api/projects/feed",
-                    "/api/projects/explore",
-                    "/api/categories",
-                    "/api/contact/messages"
+                    "/api/v1/projects/feed",
+                    "/api/v1/projects/explore",
+                    "/api/v1/categories",
+                    "/api/v1/contact/messages"
                 ).permitAll()
-                .requestMatchers(HttpMethod.GET, "/api/projects/{id}").permitAll()
-                .requestMatchers(HttpMethod.GET, "/api/projects/*/rewards").permitAll()
-                .requestMatchers(HttpMethod.GET, "/api/projects/*/updates").permitAll()   // Feature #5
-                .requestMatchers(HttpMethod.GET, "/api/projects/*/comments").permitAll()
-                .requestMatchers(HttpMethod.GET, "/api/projects/*/funding-stream").permitAll()
-                .requestMatchers(HttpMethod.POST, "/api/projects/*/view").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/v1/projects/{id}").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/v1/projects/*/rewards").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/v1/projects/*/updates").permitAll()   // Feature #5
+                .requestMatchers(HttpMethod.GET, "/api/v1/projects/*/comments").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/v1/projects/*/funding-stream").permitAll()
+                .requestMatchers(HttpMethod.POST, "/api/v1/projects/*/view").permitAll()
                 .requestMatchers("/auth/totp/verify-login").permitAll()
-                .requestMatchers(HttpMethod.GET, "/api/users/*/followers").permitAll()
-                .requestMatchers(HttpMethod.GET, "/api/users/*/following").permitAll()
-                .requestMatchers("/api/feed/followed").authenticated()
-                .requestMatchers("/api/users/*/follow").authenticated()
-                .requestMatchers("/api/users/*/follow/status").authenticated()
+                .requestMatchers(HttpMethod.GET, "/api/v1/users/*/followers").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/v1/users/*/following").permitAll()
+                .requestMatchers("/api/v1/feed/followed").authenticated()
+                .requestMatchers("/api/v1/users/*/follow").authenticated()
+                .requestMatchers("/api/v1/users/*/follow/status").authenticated()
 
                 // Authenticated-only auth actions
                 .requestMatchers("/auth/send-verification-email").authenticated()
 
                 // Creator OTP (any authenticated user)
                 .requestMatchers(
-                    "/api/creator/send-otp",
-                    "/api/creator/verify-otp"
+                    "/api/v1/creator/send-otp",
+                    "/api/v1/creator/verify-otp"
                 ).authenticated()
 
                 // Creator role required
                 .requestMatchers(
-                    "/api/creator/submit-kyc",
-                    "/api/creator/upload-kyc-doc",
-                    "/api/creator/kyc-status",
-                    "/api/projects/create",
-                    "/api/projects/creator/**"
+                    "/api/v1/creator/submit-kyc",
+                    "/api/v1/creator/upload-kyc-doc",
+                    "/api/v1/creator/kyc-status",
+                    "/api/v1/projects/create",
+                    "/api/v1/projects/creator/**"
                 ).hasRole("CREATOR")
 
                 // Authenticated user areas
-                .requestMatchers("/api/backer/**").authenticated()
-                .requestMatchers("/api/notifications/**").authenticated()
-                .requestMatchers("/api/payment/**").authenticated()            // Feature #1
-                .requestMatchers("/api/users/saved/**").authenticated()        // Feature #7
+                .requestMatchers("/api/v1/backer/**").authenticated()
+                .requestMatchers("/api/v1/notifications/**").authenticated()
+                .requestMatchers("/api/v1/payment/**").authenticated()            // Feature #1
+                .requestMatchers("/api/v1/users/saved/**").authenticated()        // Feature #7
 
                 // Admin only
-                .requestMatchers("/admin/**").hasRole("ADMIN")
+                .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
 
                 .anyRequest().authenticated()
             )

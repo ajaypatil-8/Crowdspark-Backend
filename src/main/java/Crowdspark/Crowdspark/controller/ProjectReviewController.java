@@ -22,7 +22,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
-@RequestMapping("/api/projects/{projectId}/reviews")
+@RequestMapping("/api/v1/projects/{projectId}/reviews")
 @RequiredArgsConstructor
 @Tag(name = "Reviews & Ratings", description = "Star ratings and written reviews — only verified backers can submit")
 public class ProjectReviewController {

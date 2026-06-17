@@ -34,7 +34,7 @@ public class FollowController {
                description = "Toggle — if already following, unfollows. Returns new state.",
                security = @SecurityRequirement(name = "bearerAuth"))
     @PreAuthorize("isAuthenticated()")
-    @PutMapping("/api/users/{targetId}/follow")
+    @PutMapping("/api/v1/users/{targetId}/follow")
     public ResponseEntity<ApiResponse<FollowStatusResponse>> toggleFollow(
             @PathVariable Long targetId,
             @AuthenticationPrincipal String username) {
@@ -49,7 +49,7 @@ public class FollowController {
     @Operation(summary = "Check if you follow a user",
                security = @SecurityRequirement(name = "bearerAuth"))
     @PreAuthorize("isAuthenticated()")
-    @GetMapping("/api/users/{targetId}/follow/status")
+    @GetMapping("/api/v1/users/{targetId}/follow/status")
     public ResponseEntity<ApiResponse<FollowStatusResponse>> checkFollowStatus(
             @PathVariable Long targetId,
             @AuthenticationPrincipal String username) {
@@ -62,7 +62,7 @@ public class FollowController {
     // ── GET /api/users/{id}/following — who they follow ──────────────────────
 
     @Operation(summary = "Get list of users this person follows")
-    @GetMapping("/api/users/{userId}/following")
+    @GetMapping("/api/v1/users/{userId}/following")
     public ResponseEntity<ApiResponse<Page<FollowResponse>>> getFollowing(
             @PathVariable Long userId,
             @RequestParam(defaultValue = "0")  int page,
@@ -75,7 +75,7 @@ public class FollowController {
     // ── GET /api/users/{id}/followers — who follows them ─────────────────────
 
     @Operation(summary = "Get list of followers for a user")
-    @GetMapping("/api/users/{userId}/followers")
+    @GetMapping("/api/v1/users/{userId}/followers")
     public ResponseEntity<ApiResponse<Page<FollowResponse>>> getFollowers(
             @PathVariable Long userId,
             @RequestParam(defaultValue = "0")  int page,
@@ -91,7 +91,7 @@ public class FollowController {
                description = "Returns latest 20 APPROVED projects from followed creators.",
                security = @SecurityRequirement(name = "bearerAuth"))
     @PreAuthorize("isAuthenticated()")
-    @GetMapping("/api/feed/followed")
+    @GetMapping("/api/v1/feed/followed")
     public ResponseEntity<ApiResponse<List<ProjectFeedResponse>>> getFollowedFeed(
             @AuthenticationPrincipal String username) {
 

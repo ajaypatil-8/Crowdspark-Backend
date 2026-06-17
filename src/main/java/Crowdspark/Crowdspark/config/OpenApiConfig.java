@@ -1,5 +1,5 @@
 // src/main/java/Crowdspark/Crowdspark/config/OpenApiConfig.java
-// NEW FILE
+// Feature #26 — updated API version strings and server description
 
 package Crowdspark.Crowdspark.config;
 
@@ -37,16 +37,16 @@ public class OpenApiConfig {
                             ## CrowdSpark Crowdfunding Platform — REST API
                             
                             **Authentication:** Most endpoints require a JWT Bearer token.
-                            1. Call `POST /auth/login` to get an access token.
+                            1. Call `POST /auth/login` to get an access token. (auth endpoints are **not** versioned)
                             2. Click **Authorize** (top right) and paste the token.
                             3. All authenticated endpoints will now work.
                             
                             **Roles:**
                             - `BACKER` — default role after registration
-                            - `CREATOR` — after KYC approval (`/api/creator/submit-kyc`)
+                            - `CREATOR` — after KYC approval (`/api/v1/creator/submit-kyc`)
                             - `ADMIN` — platform administrators only
                             """)
-                        .version("v1.0")
+                        .version("v1.0 — all routes under /api/v1/*")
                         .contact(new Contact()
                                 .name("CrowdSpark Support")
                                 .email("dev@crowdspark.in")

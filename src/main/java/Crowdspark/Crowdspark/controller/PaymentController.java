@@ -24,7 +24,7 @@ import org.springframework.web.bind.annotation.*;
 
 @Slf4j
 @RestController
-@RequestMapping("/api/payment")
+@RequestMapping("/api/v1/payment")
 @RequiredArgsConstructor
 @Tag(name = "Payments", description = "Razorpay payment gateway — create order and verify payment")
 public class PaymentController {

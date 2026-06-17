@@ -38,7 +38,7 @@ import org.springframework.web.server.ResponseStatusException;
 import java.util.List;
 
 @RestController
-@RequestMapping("/admin")
+@RequestMapping("/api/v1/admin")
 @RequiredArgsConstructor
 @Tag(name = "Admin", description = "Project approval, KYC review, user management, payouts, refunds. ADMIN role required.")
 public class AdminController {

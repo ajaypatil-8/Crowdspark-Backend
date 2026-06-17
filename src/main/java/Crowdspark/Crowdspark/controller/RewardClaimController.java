@@ -39,7 +39,7 @@ public class RewardClaimController {
         security = @SecurityRequirement(name = "bearerAuth")
     )
     @PreAuthorize("hasRole('CREATOR')")
-    @GetMapping("/api/projects/{projectId}/reward-claims")
+    @GetMapping("/api/v1/projects/{projectId}/reward-claims")
     public ResponseEntity<ApiResponse<Page<RewardClaimResponse>>> getProjectClaims(
             @PathVariable Long projectId,
             @RequestParam(required = false) String status,
@@ -58,7 +58,7 @@ public class RewardClaimController {
         security = @SecurityRequirement(name = "bearerAuth")
     )
     @PreAuthorize("hasRole('CREATOR')")
-    @GetMapping("/api/projects/{projectId}/reward-claims/summary")
+    @GetMapping("/api/v1/projects/{projectId}/reward-claims/summary")
     public ResponseEntity<ApiResponse<Map<String, Long>>> getClaimSummary(
             @PathVariable Long projectId,
             @AuthenticationPrincipal String username) {
@@ -76,7 +76,7 @@ public class RewardClaimController {
         security = @SecurityRequirement(name = "bearerAuth")
     )
     @PreAuthorize("hasRole('CREATOR')")
-    @PutMapping("/api/reward-claims/{claimId}/status")
+    @PutMapping("/api/v1/reward-claims/{claimId}/status")
     public ResponseEntity<ApiResponse<RewardClaimResponse>> updateStatus(
             @PathVariable Long claimId,
             @Valid @RequestBody RewardClaimStatusRequest request,
@@ -95,7 +95,7 @@ public class RewardClaimController {
         security = @SecurityRequirement(name = "bearerAuth")
     )
     @PreAuthorize("isAuthenticated()")
-    @GetMapping("/api/backer/reward-claims")
+    @GetMapping("/api/v1/backer/reward-claims")
     public ResponseEntity<ApiResponse<List<RewardClaimResponse>>> myBackerClaims(
             @AuthenticationPrincipal String username) {
 
@@ -113,7 +113,7 @@ public class RewardClaimController {
         security = @SecurityRequirement(name = "bearerAuth")
     )
     @PreAuthorize("isAuthenticated()")
-    @PutMapping("/api/reward-claims/{claimId}/shipping")
+    @PutMapping("/api/v1/reward-claims/{claimId}/shipping")
     public ResponseEntity<ApiResponse<RewardClaimResponse>> updateShipping(
             @PathVariable Long claimId,
             @Valid @RequestBody RewardClaimShippingRequest request,

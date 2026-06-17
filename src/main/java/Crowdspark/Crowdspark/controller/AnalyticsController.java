@@ -22,7 +22,7 @@ import java.util.HexFormat;
 
 @Tag(name = "Analytics", description = "Project view tracking and creator analytics dashboard")
 @RestController
-@RequestMapping("/api/projects")
+@RequestMapping("/api/v1/projects")
 @RequiredArgsConstructor
 public class AnalyticsController {
 
