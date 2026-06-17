@@ -1,14 +1,10 @@
 // src/main/java/Crowdspark/Crowdspark/dto/RegisterRequest.java
-// Feature #25 — Input Validation Hardening
-// Changes:
-//   • username: added @Pattern (alphanumeric + underscore + dot only, no leading/trailing dots)
-//   • name:     added @Size(min=2, max=100) — was only @NotBlank
-//   • email:    added @Size(max=255) to prevent oversized payloads
-//   • password: added @Size(max=128) — previously no upper bound; a 100 MB string password
-//               would pass validation and waste CPU on bcrypt hashing
+// Feature #25 — Input Validation Hardening  (size/pattern constraints)
+// Feature #27 — Password Strength & Entropy  (@ValidPassword added to password)
 
 package Crowdspark.Crowdspark.dto;
 
+import Crowdspark.Crowdspark.security.validation.ValidPassword;
 import jakarta.validation.constraints.*;
 import lombok.Data;
 
@@ -39,8 +35,14 @@ public class RegisterRequest {
     )
     private String phoneNumber;
 
+    /**
+     * @Size enforces length bounds BEFORE @ValidPassword runs entropy scoring.
+     * This avoids bcrypt DoS (100 MB "password" string) even if entropy check
+     * somehow passes (it won't, but defence in depth).
+     */
     @NotBlank(message = "Password is required")
     @Size(min = 8, max = 128,
           message = "Password must be between 8 and 128 characters")
+    @ValidPassword
     private String password;
 }
