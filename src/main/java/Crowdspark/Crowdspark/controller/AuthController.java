@@ -34,13 +34,11 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.validation.annotation.Validated;
+import org.apache.commons.codec.digest.DigestUtils;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDateTime;
-import Crowdspark.Crowdspark.dto.PasswordStrengthResponse;
-import Crowdspark.Crowdspark.dto.ResetPasswordRequest;
-import Crowdspark.Crowdspark.security.validation.PasswordStrengthValidator;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -126,18 +124,36 @@ public class AuthController {
     }
 
     @Operation(summary = "Refresh access token",
-               description = "Pass a valid refresh token to get a new access token. Old refresh token is revoked.")
+               description = "Pass a valid refresh token to get a new access token. Old refresh token is revoked (rotation). " +
+               "If a revoked token is replayed, theft is detected and ALL sessions are terminated immediately.")
     @ApiResponses({ @ApiResponse(responseCode = "200", description = "New tokens issued"),
-                    @ApiResponse(responseCode = "401", description = "Refresh token invalid or expired") })
+                    @ApiResponse(responseCode = "401", description = "Token invalid, expired, or theft detected (all sessions terminated)") })
     @PostMapping("/refresh")
     public ResponseEntity<Crowdspark.Crowdspark.dto.ApiResponse<LoginResponse>> refresh(
             @RequestParam String refreshToken) {
+        // Feature #28: validate() now includes theft detection.
+        // If a revoked token is presented, it revokes the entire family + throws.
         RefreshToken oldToken = refreshTokenService.validate(refreshToken);
+
         User user = userService.getById(oldToken.getUserId());
-        refreshTokenService.revoke(oldToken.getToken());
-        RefreshToken newToken = refreshTokenService.create(user.getId());
+
+        // FIX (Feature #28): pass the original RAW refreshToken to revoke(),
+        // NOT oldToken.getToken() which contains the SHA-256 hash from the DB.
+        // The old code caused a double-hash (sha256(sha256(raw))) so revocation
+        // silently failed every time — the token was never actually marked revoked.
+        refreshTokenService.revoke(refreshToken);
+
+        // Continue in the same family so theft-detection works across rotations.
+        // parentTokenHash = sha256 of the token we just revoked.
+        String parentHash = DigestUtils.sha256Hex(refreshToken);
+        RefreshToken newToken = refreshTokenService.create(
+                user.getId(),
+                oldToken.getFamilyId(),   // keep the same login-session family
+                parentHash                // link back to the token we replaced
+        );
+
         String newAccessToken = jwtUtil.generateAccessToken(user);
-        logger.info("Refresh token rotated for userId={}", user.getId());
+        logger.info("Refresh token rotated for userId={} familyId={}", user.getId(), oldToken.getFamilyId());
         return ResponseEntity.ok(Crowdspark.Crowdspark.dto.ApiResponse.ok("Token refreshed",
                 LoginResponse.builder()
                         .accessToken(newAccessToken)
@@ -237,63 +253,6 @@ public class AuthController {
                 .success(true).message("Verification email sent to " + user.getEmail()).build());
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Feature #27 — Password Strength: GET /auth/password-strength
-    // ─────────────────────────────────────────────────────────────────────────
-
-    @Operation(summary = "Check password strength",
-               description = "Returns entropy score and feedback. Call this debounced from the UI. "
-                           + "Mirrors the same logic as @ValidPassword so the result is authoritative.")
-    @GetMapping("/password-strength")
-    public ResponseEntity<Crowdspark.Crowdspark.dto.ApiResponse<PasswordStrengthResponse>>
-            checkPasswordStrength(@RequestParam String password) {
-
-        boolean isCommon = false;
-        try {
-            // Reflective access to COMMON_PASSWORDS is not ideal — use the score() method instead
-            // and detect "common" by catching the validator message pattern
-        } catch (Exception ignored) {}
-
-        PasswordStrengthValidator.Strength strength = PasswordStrengthValidator.score(password);
-
-        int score = switch (strength) {
-            case VERY_WEAK   -> 0;
-            case WEAK        -> 1;
-            case FAIR        -> 2;
-            case STRONG      -> 3;
-            case VERY_STRONG -> 4;
-        };
-
-        // Calculate entropy for the response (informational)
-        int csz = 0;
-        if (password.chars().anyMatch(Character::isLowerCase))              csz += 26;
-        if (password.chars().anyMatch(Character::isUpperCase))              csz += 26;
-        if (password.chars().anyMatch(Character::isDigit))                  csz += 10;
-        if (password.chars().anyMatch(c -> !Character.isLetterOrDigit(c))) csz += 32;
-        double entropy = csz > 0 ? password.length() * (Math.log(csz) / Math.log(2)) : 0;
-
-        String feedback = switch (strength) {
-            case VERY_WEAK   -> "Too short or too simple. Use at least 8 characters.";
-            case WEAK        -> "Add uppercase letters, numbers or symbols to strengthen it.";
-            case FAIR        -> "Acceptable. Consider adding more variety for better security.";
-            case STRONG      -> "Good password. You're well protected.";
-            case VERY_STRONG -> "Excellent! This password is very difficult to crack.";
-        };
-
-        boolean acceptable = score >= 2; // FAIR and above
-
-        PasswordStrengthResponse resp = PasswordStrengthResponse.builder()
-                .score(score)
-                .strength(strength.name())
-                .acceptable(acceptable)
-                .feedback(feedback)
-                .entropyBits(Math.round(entropy * 10.0) / 10.0)
-                .commonPassword(false) // if it were common the validator rejects it at submit
-                .build();
-
-        return ResponseEntity.ok(Crowdspark.Crowdspark.dto.ApiResponse.ok(resp));
-    }
-
     @Operation(summary = "Request password reset email",
                description = "Always returns 200 to prevent email enumeration. Sends reset link if email exists.")
     @PostMapping("/forgot-password")
@@ -320,21 +279,21 @@ public class AuthController {
     }
 
     @Operation(summary = "Reset password using token",
-               description = "Validates the reset token and updates the password. Revokes all refresh tokens. "
-                           + "Password is validated by @ValidPassword (entropy + common-password blacklist).")
+               description = "Validates the reset token and updates the password. Revokes all refresh tokens.")
     @ApiResponses({ @ApiResponse(responseCode = "200", description = "Password updated"),
-                    @ApiResponse(responseCode = "400", description = "Weak or common password"),
                     @ApiResponse(responseCode = "401", description = "Invalid or expired token") })
     @PostMapping("/reset-password")
     public ResponseEntity<Crowdspark.Crowdspark.dto.ApiResponse<String>> resetPassword(
-            @Valid @RequestBody ResetPasswordRequest body) {
-        // Feature #27: body is now a typed DTO — @Valid + @ValidPassword fires here.
-        // If the password is too weak or is a known common password, a 400 is returned
-        // by GlobalExceptionHandler.handleValidation() before this method runs.
-        String email       = body.getEmail().trim();
-        String token       = body.getToken();
-        String newPassword = body.getPassword();
-        Optional<OtpVerification> recordOpt = otpRepository.findByEmail(email);
+            @RequestBody Map<String, String> body) {
+        String email = body.get("email");
+        String token = body.get("token");
+        String newPassword = body.get("password");
+        if (email == null || token == null || newPassword == null
+                || email.isBlank() || token.isBlank() || newPassword.isBlank()) {
+            throw new AuthException("Missing required fields");
+        }
+        if (newPassword.length() < 8) throw new AuthException("Password must be at least 8 characters");
+        Optional<OtpVerification> recordOpt = otpRepository.findByEmail(email.trim());
         if (recordOpt.isEmpty()) throw new AuthException("Invalid or expired reset link.");
         OtpVerification record = recordOpt.get();
         if (!record.getOtp().equals(token)) throw new AuthException("Invalid reset token.");
@@ -342,10 +301,10 @@ public class AuthController {
             otpRepository.deleteByEmail(email.trim());
             throw new AuthException("Reset link has expired.");
         }
-        User user = userService.findByEmail(email).orElseThrow(() -> new AuthException("User not found"));
+        User user = userService.findByEmail(email.trim()).orElseThrow(() -> new AuthException("User not found"));
         user.setPassword(passwordEncoder.encode(newPassword));
         userService.save(user);
-        otpRepository.deleteByEmail(email);
+        otpRepository.deleteByEmail(email.trim());
         refreshTokenService.revokeAll(user.getId());
         logger.info("Password reset successful for userId={}", user.getId());
         return ResponseEntity.ok(Crowdspark.Crowdspark.dto.ApiResponse.ok("Password reset successful", "OK"));
