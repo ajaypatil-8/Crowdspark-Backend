@@ -198,7 +198,8 @@ public class ProjectServiceImpl implements ProjectService {
                 .creator(ProjectFullDetailsResponse.CreatorDto.builder()
                         .id(p.getCreator().getId())
                         .username(p.getCreator().getUsername())
-                        .profileImage(null).about(null).build())
+                        .profileImage(p.getCreator().getProfileImageUrl())
+                        .about(p.getCreator().getAbout()).build())
                 .build();
     }
 
@@ -287,7 +288,8 @@ public class ProjectServiceImpl implements ProjectService {
                 .creator(ProjectFeedResponse.CreatorDto.builder()
                         .id(p.getCreator().getId())
                         .username(p.getCreator().getUsername())
-                        .profileImage(null).about(null)
+                        .profileImage(p.getCreator().getProfileImageUrl())
+                        .about(p.getCreator().getAbout())
                         .joinedAt(null).totalProjects(0L).totalBackers(0L)
                         .build())
                 .build();
