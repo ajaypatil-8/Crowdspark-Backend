@@ -1,6 +1,4 @@
-// src/main/java/Crowdspark/Crowdspark/security/filter/RateLimitFilter.java
-// NEW FILE — Redis-backed rate limiting. Uses the existing StringRedisTemplate
-// (no new dependencies). Runs second in filter chain, after XssCleanFilter.
+
 
 package Crowdspark.Crowdspark.security.filter;
 
@@ -161,8 +159,8 @@ public class RateLimitFilter extends OncePerRequestFilter {
     }
 
     private void sendRateLimitResponse(HttpServletResponse response,
-                                        String path,
-                                        long retryAfterSeconds)
+                                       String path,
+                                       long retryAfterSeconds)
             throws IOException {
         response.setStatus(HttpStatus.TOO_MANY_REQUESTS.value());  // 429
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);

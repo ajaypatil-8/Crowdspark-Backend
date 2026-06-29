@@ -80,4 +80,9 @@ public class Project {
     // ALL MEDIA (images + videos)
     @OneToMany(mappedBy = "project", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<ProjectMedia> media = new ArrayList<>();
+
+
+    @Column(name = "search_vector", columnDefinition = "tsvector",
+            insertable = false, updatable = false)
+    private String searchVector;
 }
