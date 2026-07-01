@@ -1,5 +1,3 @@
-
-
 package Crowdspark.Crowdspark.security.filter;
 
 import tools.jackson.databind.ObjectMapper;

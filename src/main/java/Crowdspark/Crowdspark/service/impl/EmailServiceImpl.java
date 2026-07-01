@@ -36,4 +36,10 @@ public class EmailServiceImpl implements EmailService {
         message.setText(body);
         mailSender.send(message);
     }
+
+    @Override
+    public void sendEmailWithAttachment(String email, String subject, String s, byte[] pdfBytes, String s1) {
+
+        // Implementation for sending email with attachment
+    }
 }
