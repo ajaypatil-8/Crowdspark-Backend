@@ -60,7 +60,7 @@ public class CreatorServiceImpl implements CreatorService {
         otpRepository.save(otpEntity);
 
         // fix: pass name as 2nd param
-        emailService.sendOtpEmail(user.getEmail(), user.getName(), otp);
+        emailService.sendOtpEmail(user.getEmail(), user.getName(), otp, 5);
 
         return "OTP sent to your registered email";
     }

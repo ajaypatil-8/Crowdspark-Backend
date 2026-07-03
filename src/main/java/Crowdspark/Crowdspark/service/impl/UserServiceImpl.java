@@ -17,6 +17,7 @@ import org.springframework.web.multipart.MultipartFile;
 import java.util.Map;
 import java.util.Set;
 import java.util.Optional;
+import Crowdspark.Crowdspark.service.EmailService;
 
 
 
@@ -29,6 +30,7 @@ public class UserServiceImpl implements UserService {
     private final AuditLogService auditLogService;
     private final ModelMapper modelMapper;
     private final CloudinaryService cloudinaryService;
+    private final EmailService emailService;
 
     // reg
     @Override
@@ -58,7 +60,7 @@ public class UserServiceImpl implements UserService {
 
         User saved = userRepository.save(user);
         auditLogService.log(saved.getId(), "USER_REGISTERED", "USER", saved.getId());
-
+        emailService.sendWelcomeEmail(saved.getEmail(), saved.getName());
         return mapToResponse(saved);
     }
 

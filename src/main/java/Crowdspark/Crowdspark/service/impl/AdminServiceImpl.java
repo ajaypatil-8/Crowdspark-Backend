@@ -17,7 +17,7 @@ import org.modelmapper.ModelMapper;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
+import Crowdspark.Crowdspark.service.EmailService;
 import Crowdspark.Crowdspark.dto.ProjectFullDetailsResponse;
 import Crowdspark.Crowdspark.dto.RewardTierResponse;
 import Crowdspark.Crowdspark.entity.RewardTier;
@@ -35,6 +35,7 @@ public class AdminServiceImpl implements AdminService {
     private final NotificationService notificationService;
     private final ModelMapper modelMapper;
     private final RewardTierRepository rewardTierRepository;
+    private final EmailService emailService;
 
     // ─── Project Detail (admin — no status restriction) ───────────────────────
 
@@ -152,6 +153,12 @@ public class AdminServiceImpl implements AdminService {
         projectRepository.save(project);
 
         notificationService.notifyCreatorProjectApproved(project);
+        emailService.sendCampaignApprovedEmail(
+                project.getCreator().getEmail(),
+                project.getCreator().getName(),
+                project.getTitle(),
+                project.getId()
+        );
     }
 
     @Override
@@ -170,6 +177,12 @@ public class AdminServiceImpl implements AdminService {
         projectRepository.save(project);
 
         notificationService.notifyCreatorProjectRejected(project, reason);
+        emailService.sendCampaignRejectedEmail(                 // ← add this block
+                project.getCreator().getEmail(),
+                project.getCreator().getName(),
+                project.getTitle(),
+                reason
+        );
     }
 
     // ─── Users ────────────────────────────────────────────────────────────────

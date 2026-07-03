@@ -61,7 +61,7 @@ public class KycServiceImpl implements KycService {
         otpRepository.save(otpVerification);
 
         // Send email
-        emailService.sendOtpEmail(user.getEmail(), user.getName(), otp);
+        emailService.sendOtpEmail(user.getEmail(), user.getName(), otp, 10);
 
         auditLogService.log(userId, "CREATOR_OTP_SENT", "USER", userId);
 

@@ -21,7 +21,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
-
+import Crowdspark.Crowdspark.service.EmailService;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -34,6 +34,7 @@ public class DonationServiceImpl implements DonationService {
     private final UserRepository        userRepository;
     private final RewardTierRepository  rewardTierRepository;
     private final NotificationService   notificationService;
+    private final EmailService emailService;
 
     @Override
     @Transactional
@@ -131,6 +132,17 @@ public class DonationServiceImpl implements DonationService {
 
         // 8. Notify creator of new backer
         notificationService.notifyCreatorBacked(project, backer, request.getAmount());
+
+        emailService.sendBackerReceiptEmail(
+                backer.getEmail(),
+                backer.getName(),
+                project.getTitle(),
+                project.getId(),
+                saved.getAmount(),
+                saved.getTransactionId(),
+                rewardTier != null ? rewardTier.getTitle() : null,
+                saved.getPaidAt()
+        );
 
         return toResponse(saved);
     }

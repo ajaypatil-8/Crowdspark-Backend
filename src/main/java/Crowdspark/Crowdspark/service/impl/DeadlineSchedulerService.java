@@ -20,7 +20,7 @@ import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
+import Crowdspark.Crowdspark.service.EmailService;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -33,7 +33,8 @@ public class DeadlineSchedulerService {
     private final DonationRepository  donationRepository;
     private final NotificationService notificationService;
     private final RefundService       refundService;
-    private final FundingStreamService fundingStreamService;// ← NEW
+    private final FundingStreamService fundingStreamService;
+    private final EmailService emailService;
 
     @Scheduled(cron = "0 0 * * * *")
     @Transactional
@@ -77,6 +78,14 @@ public class DeadlineSchedulerService {
 
             notificationService.notifyCreatorCampaignFunded(project);
             notifyAllBackers(project, true);
+            emailService.sendCampaignFundedEmail(
+                    project.getCreator().getEmail(),
+                    project.getCreator().getName(),
+                    project.getTitle(),
+                    project.getId(),
+                    project.getCurrentAmount(),
+                    project.getGoalAmount()
+            );
 
         } else {
             // ── FAILED ────────────────────────────────────────────────────────

@@ -39,7 +39,7 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
-
+import Crowdspark.Crowdspark.service.EmailService;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
@@ -57,8 +57,8 @@ public class PaymentServiceImpl implements PaymentService {
     private final NotificationService   notificationService;
     private final FundingStreamService  fundingStreamService;
     private final RewardClaimService    rewardClaimService;
-    private final PdfReceiptService     pdfReceiptService;   // FIX #10: injected
-    private final EmailService          emailService;        // FIX #10: injected
+    private final PdfReceiptService     pdfReceiptService;
+    private final EmailService emailService;
 
     @Value("${razorpay.key-id}")
     private String razorpayKeyId;
@@ -217,6 +217,18 @@ public class PaymentServiceImpl implements PaymentService {
         // ── FIX #10: Generate and email PDF receipt asynchronously ──────────
         // Async so it never slows down the payment confirmation response.
         sendReceiptAsync(donation);
+
+        String rewardTierTitle = donation.getRewardTier() != null ? donation.getRewardTier().getTitle() : null;
+        emailService.sendBackerReceiptEmail(
+                backer.getEmail(),
+                backer.getName(),
+                project.getTitle(),
+                project.getId(),
+                donation.getAmount(),
+                donation.getTransactionId(),
+                rewardTierTitle,
+                donation.getPaidAt()
+        );
 
         return toResponse(donation);
     }

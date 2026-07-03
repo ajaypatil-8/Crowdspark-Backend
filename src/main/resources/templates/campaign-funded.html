@@ -1,0 +1,129 @@
+<!-- src/main/resources/templates/email/campaign-funded.html -->
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <title>Your campaign is fully funded</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500;600;700&display=swap');
+        body, table, td, a { -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%; }
+        table, td { mso-table-lspace: 0pt; mso-table-rspace: 0pt; }
+        img { -ms-interpolation-mode: bicubic; border: 0; outline: none; text-decoration: none; }
+        body { margin: 0; padding: 0; width: 100% !important; background-color: #f4f4f5; }
+        a { text-decoration: none; }
+        .btn-primary:hover { background-color: #e05200 !important; }
+        @media screen and (max-width: 600px) {
+          .container { width: 100% !important; }
+          .px { padding-left: 24px !important; padding-right: 24px !important; }
+          .stat-value { font-size: 26px !important; }
+        }
+    </style>
+</head>
+<body th:inline="text" style="margin:0;padding:0;background-color:#f4f4f5;">
+<div style="display:none;max-height:0;overflow:hidden;opacity:0;font-size:1px;line-height:1px;color:#f4f4f5;">Your campaign hit its funding goal — here's the final tally.</div>
+
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f4f5;padding:32px 16px;">
+    <tr><td align="center">
+        <table role="presentation" class="container" width="600" cellpadding="0" cellspacing="0" style="width:600px;max-width:600px;background-color:#ffffff;border-radius:16px;border:1px solid #e4e4e7;">
+
+            <!-- header -->
+            <tr>
+                <td class="px" style="background-color:#0c0c10;padding:28px 40px;border-radius:16px 16px 0 0;">
+      <span style="font-family:'Syne','DM Sans',Arial,sans-serif;font-weight:800;font-size:22px;letter-spacing:-0.02em;">
+        <span style="color:#ff5c00;">Crowd</span><span style="color:#ffffff;">Spark</span>
+      </span>
+                </td>
+            </tr>
+
+            <!-- body -->
+            <tr>
+                <td class="px" style="padding:40px 40px 8px;">
+                    <div style="font-size:36px;line-height:1;margin:0 0 16px;">🎉</div>
+                    <h1 style="margin:0 0 16px;font-family:'Syne','DM Sans',Arial,sans-serif;font-weight:800;font-size:26px;line-height:1.3;color:#18181b;">
+                        Fully funded!
+                    </h1>
+                    <p style="margin:0 0 8px;font-family:'DM Sans',Arial,sans-serif;font-size:15px;line-height:24px;color:#52525b;">
+                        Hi [[${creatorName}]], the deadline for <strong style="color:#18181b;">"[[${projectTitle}]]"</strong> has passed and you hit your goal. Congratulations — this one's on you and everyone who backed it.
+                    </p>
+                </td>
+            </tr>
+
+            <!-- stat card -->
+            <tr>
+                <td class="px" style="padding:20px 40px 8px;">
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f4f5;border-radius:12px;">
+                        <tr>
+                            <td style="padding:24px 24px 16px;">
+                                <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+                                    <tr>
+                                        <td>
+                                            <p style="margin:0 0 2px;font-family:'DM Sans',Arial,sans-serif;font-size:12px;font-weight:600;color:#71717a;text-transform:uppercase;letter-spacing:0.04em;">Raised</p>
+                                            <p class="stat-value" style="margin:0;font-family:'Syne','DM Sans',Arial,sans-serif;font-weight:800;font-size:30px;color:#18181b;" th:text="${raisedFormatted}">₹0.00</p>
+                                        </td>
+                                        <td align="right">
+                                            <p style="margin:0 0 2px;font-family:'DM Sans',Arial,sans-serif;font-size:12px;font-weight:600;color:#71717a;text-transform:uppercase;letter-spacing:0.04em;">Goal</p>
+                                            <p style="margin:0;font-family:'DM Sans',Arial,sans-serif;font-weight:700;font-size:18px;color:#52525b;" th:text="${goalFormatted}">₹0.00</p>
+                                        </td>
+                                    </tr>
+                                </table>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td style="padding:0 24px 24px;">
+                                <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+                                    <tr>
+                                        <td th:style="|width:${percent > 100 ? 100 : percent}%;background-color:#ff5c00;border-radius:6px 0 0 6px;height:10px;font-size:1px;line-height:1px;|">&nbsp;</td>
+                                        <td th:style="|width:${percent > 100 ? 0 : (100 - percent)}%;background-color:#e4e4e7;border-radius:0 6px 6px 0;height:10px;font-size:1px;line-height:1px;|">&nbsp;</td>
+                                    </tr>
+                                </table>
+                                <p style="margin:10px 0 0;font-family:'DM Sans',Arial,sans-serif;font-size:13px;font-weight:600;color:#10b981;">[[${percent}]]% of goal</p>
+                            </td>
+                        </tr>
+                    </table>
+                </td>
+            </tr>
+
+            <!-- next steps -->
+            <tr>
+                <td class="px" style="padding:16px 40px 8px;">
+                    <p style="margin:0;font-family:'DM Sans',Arial,sans-serif;font-size:14px;line-height:22px;color:#71717a;">
+                        Funds will be disbursed to your registered payout details shortly. Your backers will also be notified that the campaign succeeded.
+                    </p>
+                </td>
+            </tr>
+
+            <!-- CTA -->
+            <tr>
+                <td class="px" style="padding:16px 40px 40px;">
+                    <table role="presentation" cellpadding="0" cellspacing="0">
+                        <tr>
+                            <td style="border-radius:10px;background-color:#ff5c00;">
+                                <a th:href="${dashboardUrl}" class="btn-primary" style="display:inline-block;padding:14px 28px;font-family:'DM Sans',Arial,sans-serif;font-size:15px;font-weight:700;color:#ffffff;border-radius:10px;">
+                                    Go to your dashboard →
+                                </a>
+                            </td>
+                        </tr>
+                    </table>
+                </td>
+            </tr>
+
+            <!-- divider -->
+            <tr><td class="px" style="padding:0 40px;"><div style="border-top:1px solid #e4e4e7;"></div></td></tr>
+
+            <!-- footer -->
+            <tr>
+                <td class="px" style="padding:24px 40px 32px;">
+                    <p style="margin:0;font-family:'DM Sans',Arial,sans-serif;font-size:12px;line-height:18px;color:#a1a1aa;">
+                        You're receiving this email because you created a campaign on CrowdSpark.<br />
+                        &copy; [[${currentYear}]] CrowdSpark. All rights reserved.
+                    </p>
+                </td>
+            </tr>
+
+        </table>
+    </td></tr>
+</table>
+</body>
+</html>
