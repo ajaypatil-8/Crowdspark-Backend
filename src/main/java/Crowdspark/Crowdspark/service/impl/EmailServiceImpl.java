@@ -1,16 +1,17 @@
 // src/main/java/Crowdspark/Crowdspark/service/impl/EmailServiceImpl.java
 // Feature #9 — HTML email templates (Thymeleaf)
-// CHANGE: sendOtpEmail is now HTML + gained a validityMinutes param (see EmailService.java).
-// sendSimpleEmail is untouched. Five new template-backed methods added:
-// welcome, campaign-approved, campaign-rejected, campaign-funded, backer-receipt.
+// Feature #10 — sendBackerReceiptEmail also generates a PDF receipt
+// (via PdfReceiptService) and attaches it to the same email.
 
 package Crowdspark.Crowdspark.service.impl;
 
 import Crowdspark.Crowdspark.service.EmailService;
+import Crowdspark.Crowdspark.service.PdfReceiptService;
 import jakarta.mail.MessagingException;
 import jakarta.mail.internet.MimeMessage;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.ByteArrayResource;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
@@ -32,10 +33,12 @@ public class EmailServiceImpl implements EmailService {
 
     private final JavaMailSender mailSender;
     private final TemplateEngine templateEngine;
+    private final PdfReceiptService pdfReceiptService; // ← Feature #10
 
-    public EmailServiceImpl(JavaMailSender mailSender, TemplateEngine templateEngine) {
+    public EmailServiceImpl(JavaMailSender mailSender, TemplateEngine templateEngine, PdfReceiptService pdfReceiptService) {
         this.mailSender = mailSender;
         this.templateEngine = templateEngine;
+        this.pdfReceiptService = pdfReceiptService;
     }
 
     @Value("${spring.mail.username}")
@@ -104,11 +107,6 @@ public class EmailServiceImpl implements EmailService {
                 + exploreUrl + ", or start your own campaign at " + createCampaignUrl + ".\n\nTeam CrowdSpark";
 
         sendHtmlEmail(toEmail, "Welcome to CrowdSpark, " + safeName + "!", "welcome", ctx, plainText);
-    }
-
-    @Override
-    public void sendEmailWithAttachment(String toEmail, String subject, String htmlBody, byte[] attachment, String fileName) {
-
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -187,17 +185,18 @@ public class EmailServiceImpl implements EmailService {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Backer receipt
+    // Backer receipt (+ PDF attachment — Feature #10)
     // ─────────────────────────────────────────────────────────────────────────
     @Override
     @Async("emailTaskExecutor")
     public void sendBackerReceiptEmail(String toEmail, String backerName, String projectTitle, Long projectId,
-                                       Double amount, String transactionId, String rewardTierTitle,
+                                       Long donationId, Double amount, String transactionId, String rewardTierTitle,
                                        LocalDateTime paidAt) {
         String safeName = nullSafe(backerName, "there");
         String safeTxnId = nullSafe(transactionId, "—");
         String amountFormatted = formatInr(amount == null ? 0.0 : amount);
-        String paidAtFormatted = (paidAt == null ? LocalDateTime.now() : paidAt).format(RECEIPT_DATE_FORMAT);
+        LocalDateTime safePaidAt = paidAt == null ? LocalDateTime.now() : paidAt;
+        String paidAtFormatted = safePaidAt.format(RECEIPT_DATE_FORMAT);
         String projectUrl = frontendUrl + "/projects/" + projectId;
 
         Context ctx = baseContext();
@@ -212,9 +211,23 @@ public class EmailServiceImpl implements EmailService {
 
         String plainText = "Hi " + safeName + ",\n\nThanks for backing \"" + projectTitle
                 + "\"! We've confirmed your contribution of " + amountFormatted + " on " + paidAtFormatted
-                + " (transaction ID: " + safeTxnId + ").\n\nTeam CrowdSpark";
+                + " (transaction ID: " + safeTxnId + "). Your PDF receipt is attached.\n\nTeam CrowdSpark";
 
-        sendHtmlEmail(toEmail, "Your receipt for backing \"" + projectTitle + "\"", "backer-receipt", ctx, plainText);
+        // Feature #10: PDF receipt, attached to this same email. Generated here (not
+        // in PaymentServiceImpl/DonationServiceImpl) so a PDF bug can never affect
+        // the already-confirmed donation — worst case, this email just goes out
+        // without its attachment.
+        byte[] pdfBytes = null;
+        try {
+            pdfBytes = pdfReceiptService.generateReceiptPdf(
+                    donationId, safeName, projectTitle, amount, safeTxnId, rewardTierTitle, safePaidAt);
+        } catch (Exception e) {
+            log.error("Receipt PDF generation failed for donation {} — sending email without attachment: {}",
+                    donationId, e.getMessage(), e);
+        }
+
+        sendHtmlEmail(toEmail, "Your receipt for backing \"" + projectTitle + "\"", "backer-receipt", ctx, plainText,
+                pdfBytes, "CrowdSpark-Receipt-" + donationId + ".pdf");
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -229,6 +242,12 @@ public class EmailServiceImpl implements EmailService {
     }
 
     private void sendHtmlEmail(String to, String subject, String templateName, Context context, String plainTextFallback) {
+        sendHtmlEmail(to, subject, templateName, context, plainTextFallback, null, null);
+    }
+
+    /** Feature #10 overload: attachmentBytes/attachmentFilename may both be null for no attachment. */
+    private void sendHtmlEmail(String to, String subject, String templateName, Context context,
+                               String plainTextFallback, byte[] attachmentBytes, String attachmentFilename) {
         try {
             String htmlContent = templateEngine.process("email/" + templateName, context);
 
@@ -239,16 +258,18 @@ public class EmailServiceImpl implements EmailService {
             helper.setFrom(fromEmail, fromName);
             helper.setText(plainTextFallback, htmlContent);
 
+            if (attachmentBytes != null && attachmentBytes.length > 0) {
+                helper.addAttachment(attachmentFilename, new ByteArrayResource(attachmentBytes));
+            }
+
             mailSender.send(mimeMessage);
-            log.info("Sent '{}' email to {}", templateName, to);
+            log.info("Sent '{}' email to {}{}", templateName, to, attachmentBytes != null ? " with attachment" : "");
         } catch (MessagingException | UnsupportedEncodingException e) {
             // Rethrown unchecked so AsyncConfig's AsyncUncaughtExceptionHandler logs the
             // real SMTP/template error instead of it being silently swallowed.
             throw new IllegalStateException("Failed to send '" + templateName + "' email to " + to, e);
         }
     }
-
-
 
     private static String nullSafe(String value, String fallback) {
         return (value == null || value.isBlank()) ? fallback : value;

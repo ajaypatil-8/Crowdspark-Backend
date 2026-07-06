@@ -1,234 +1,203 @@
-// src/main/java/Crowdspark/Crowdspark/service/impl/PdfReceiptServiceImpl.java
-// Feature #10: Generate PDF tax receipt using Apache PDFBox.
-// Produces a single-page A4 receipt with donation details, project name,
-// transaction ID, and CrowdSpark branding.
 
 package Crowdspark.Crowdspark.service.impl;
 
-import Crowdspark.Crowdspark.entity.Donation;
 import Crowdspark.Crowdspark.service.PdfReceiptService;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDPageContentStream;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
+import org.apache.pdfbox.pdmodel.font.PDFont;
 import org.apache.pdfbox.pdmodel.font.PDType1Font;
+import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
 import org.springframework.stereotype.Service;
 
+import java.awt.Color;
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.text.NumberFormat;
+import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
 
 @Slf4j
 @Service
 public class PdfReceiptServiceImpl implements PdfReceiptService {
 
-    private static final DateTimeFormatter DATE_FMT =
-            DateTimeFormatter.ofPattern("dd MMM yyyy, HH:mm");
+    private static final float MARGIN        = 50f;
+    private static final float PAGE_WIDTH     = PDRectangle.A4.getWidth();
+    private static final float PAGE_HEIGHT    = PDRectangle.A4.getHeight();
+    private static final float CONTENT_RIGHT  = PAGE_WIDTH - MARGIN;
+    private static final float CONTENT_WIDTH  = CONTENT_RIGHT - MARGIN;
+
+    // Same palette as the email templates, for a consistent look.
+    private static final Color TEXT_DARK  = new Color(24, 24, 27);
+    private static final Color TEXT_GRAY  = new Color(113, 113, 122);
+    private static final Color HEADER_BG  = new Color(12, 12, 16);
+    private static final Color LINE_LIGHT = new Color(228, 228, 231);
+    private static final Color ACCENT     = new Color(255, 92, 0);
+
+    private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ofPattern("d MMMM yyyy, h:mm a");
 
     @Override
-    public byte[] generateReceipt(Donation donation) {
-        try (PDDocument doc = new PDDocument()) {
+    public byte[] generateReceiptPdf(Long donationId, String backerName, String projectTitle, Double amount,
+                                     String transactionId, String rewardTierTitle, LocalDateTime paidAt) {
+        try (PDDocument document = new PDDocument()) {
             PDPage page = new PDPage(PDRectangle.A4);
-            doc.addPage(page);
+            document.addPage(page);
 
-            float pageWidth  = page.getMediaBox().getWidth();   // 595 pts
-            float margin     = 50f;
-            float contentWidth = pageWidth - 2 * margin;
-            float yStart     = page.getMediaBox().getHeight() - margin; // 792 pts
+            PDFont bold    = new PDType1Font(Standard14Fonts.FontName.HELVETICA_BOLD);
+            PDFont regular = new PDType1Font(Standard14Fonts.FontName.HELVETICA);
+            PDFont italic  = new PDType1Font(Standard14Fonts.FontName.HELVETICA_OBLIQUE);
 
-            try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+            double safeAmount = amount == null ? 0.0 : amount;
+            String amountFormatted = formatInr(safeAmount);
+            String receiptNo = "CS-" + String.format("%06d", donationId == null ? 0L : donationId);
+            String dateStr = (paidAt == null ? LocalDateTime.now() : paidAt).format(DATE_FORMAT);
 
-                float y = yStart;
+            try (PDPageContentStream cs = new PDPageContentStream(document, page)) {
 
-                // ── Header ─────────────────────────────────────────────────
-                cs.beginText();
-                cs.setFont(PDType1Font.HELVETICA_BOLD, 22);
-                cs.newLineAtOffset(margin, y);
-                cs.showText("CrowdSpark");
-                cs.endText();
+                float y = PAGE_HEIGHT - 70;
 
-                y -= 18;
-                cs.beginText();
-                cs.setFont(PDType1Font.HELVETICA, 10);
-                cs.newLineAtOffset(margin, y);
-                cs.showText("India's Crowdfunding Platform  |  support@crowdspark.in");
-                cs.endText();
-
-                // ── Divider ────────────────────────────────────────────────
-                y -= 16;
-                cs.setLineWidth(1f);
-                cs.moveTo(margin, y);
-                cs.lineTo(margin + contentWidth, y);
-                cs.stroke();
-
-                // ── Title ─────────────────────────────────────────────────
-                y -= 30;
-                cs.beginText();
-                cs.setFont(PDType1Font.HELVETICA_BOLD, 16);
-                cs.newLineAtOffset(margin, y);
-                cs.showText("PAYMENT RECEIPT");
-                cs.endText();
-
-                // ── Receipt number ─────────────────────────────────────────
-                y -= 24;
-                cs.beginText();
-                cs.setFont(PDType1Font.HELVETICA, 11);
-                cs.newLineAtOffset(margin, y);
-                cs.showText("Receipt No:   CS-" + String.format("%08d", donation.getId()));
-                cs.endText();
-
-                // ── Date ──────────────────────────────────────────────────
-                y -= 18;
-                String date = donation.getPaidAt() != null
-                        ? donation.getPaidAt().format(DATE_FMT)
-                        : donation.getCreatedAt().format(DATE_FMT);
-                cs.beginText();
-                cs.setFont(PDType1Font.HELVETICA, 11);
-                cs.newLineAtOffset(margin, y);
-                cs.showText("Date:         " + date);
-                cs.endText();
-
-                // ── Backer details ─────────────────────────────────────────
-                y -= 30;
-                cs.beginText();
-                cs.setFont(PDType1Font.HELVETICA_BOLD, 12);
-                cs.newLineAtOffset(margin, y);
-                cs.showText("Backer Details");
-                cs.endText();
-
-                y -= 18;
-                cs.beginText();
-                cs.setFont(PDType1Font.HELVETICA, 11);
-                cs.newLineAtOffset(margin, y);
-                cs.showText("Name:         " + safeStr(donation.getBacker().getName()));
-                cs.endText();
-
-                y -= 16;
-                cs.beginText();
-                cs.setFont(PDType1Font.HELVETICA, 11);
-                cs.newLineAtOffset(margin, y);
-                cs.showText("Email:        " + safeStr(donation.getBacker().getEmail()));
-                cs.endText();
-
-                // ── Project details ────────────────────────────────────────
+                // ── Brand header ────────────────────────────────────────────
+                drawText(cs, bold, 20, MARGIN, y, "CrowdSpark", ACCENT);
+                drawTextRightAligned(cs, bold, 11, CONTENT_RIGHT, y + 3, "PAYMENT RECEIPT", TEXT_DARK);
+                y -= 10;
+                drawLine(cs, y, HEADER_BG, 1.2f);
                 y -= 28;
-                cs.beginText();
-                cs.setFont(PDType1Font.HELVETICA_BOLD, 12);
-                cs.newLineAtOffset(margin, y);
-                cs.showText("Project Details");
-                cs.endText();
 
+                // ── Receipt No. / Date ──────────────────────────────────────
+                drawText(cs, regular, 9, MARGIN, y, "RECEIPT NO.", TEXT_GRAY);
+                drawText(cs, regular, 9, MARGIN + 260, y, "DATE", TEXT_GRAY);
+                y -= 15;
+                drawText(cs, bold, 12, MARGIN, y, receiptNo, TEXT_DARK);
+                drawText(cs, bold, 12, MARGIN + 260, y, dateStr, TEXT_DARK);
+                y -= 30;
+
+                // ── Received from ───────────────────────────────────────────
+                drawText(cs, regular, 9, MARGIN, y, "RECEIVED FROM", TEXT_GRAY);
+                y -= 15;
+                drawText(cs, bold, 12, MARGIN, y, nullSafe(backerName, "Backer"), TEXT_DARK);
+                y -= 26;
+
+                drawLine(cs, y, LINE_LIGHT, 0.75f);
+                y -= 20;
+
+                // ── Line item ────────────────────────────────────────────────
+                drawText(cs, regular, 9, MARGIN, y, "DESCRIPTION", TEXT_GRAY);
+                drawTextRightAligned(cs, regular, 9, CONTENT_RIGHT, y, "AMOUNT", TEXT_GRAY);
                 y -= 18;
-                cs.beginText();
-                cs.setFont(PDType1Font.HELVETICA, 11);
-                cs.newLineAtOffset(margin, y);
-                // truncate long project titles so they fit in the field width
-                String title = safeStr(donation.getProject().getTitle());
-                if (title.length() > 55) title = title.substring(0, 52) + "...";
-                cs.showText("Project:      " + title);
-                cs.endText();
 
-                y -= 16;
-                cs.beginText();
-                cs.setFont(PDType1Font.HELVETICA, 11);
-                cs.newLineAtOffset(margin, y);
-                cs.showText("Creator:      " + safeStr(donation.getProject().getCreator().getName()));
-                cs.endText();
-
-                // ── Payment details ────────────────────────────────────────
-                y -= 28;
-                cs.beginText();
-                cs.setFont(PDType1Font.HELVETICA_BOLD, 12);
-                cs.newLineAtOffset(margin, y);
-                cs.showText("Payment Details");
-                cs.endText();
-
-                y -= 18;
-                cs.beginText();
-                cs.setFont(PDType1Font.HELVETICA, 11);
-                cs.newLineAtOffset(margin, y);
-                cs.showText("Amount:       Rs. " + String.format("%.2f", donation.getAmount()));
-                cs.endText();
-
-                y -= 16;
-                cs.beginText();
-                cs.setFont(PDType1Font.HELVETICA, 11);
-                cs.newLineAtOffset(margin, y);
-                cs.showText("Currency:     INR (Indian Rupee)");
-                cs.endText();
-
-                y -= 16;
-                cs.beginText();
-                cs.setFont(PDType1Font.HELVETICA, 11);
-                cs.newLineAtOffset(margin, y);
-                cs.showText("Status:       CONFIRMED");
-                cs.endText();
-
-                y -= 16;
-                cs.beginText();
-                cs.setFont(PDType1Font.HELVETICA, 11);
-                cs.newLineAtOffset(margin, y);
-                cs.showText("Transaction:  " + safeStr(donation.getTransactionId()));
-                cs.endText();
-
-                if (donation.getRewardTier() != null) {
+                float descMaxWidth = 330f;
+                List<String> titleLines = wrapText(regular, 12, "Contribution to \"" + nullSafe(projectTitle, "a CrowdSpark project") + "\"", descMaxWidth);
+                for (int i = 0; i < titleLines.size(); i++) {
+                    drawText(cs, regular, 12, MARGIN, y, titleLines.get(i), TEXT_DARK);
+                    if (i == 0) {
+                        drawTextRightAligned(cs, bold, 12, CONTENT_RIGHT, y, amountFormatted, TEXT_DARK);
+                    }
                     y -= 16;
-                    cs.beginText();
-                    cs.setFont(PDType1Font.HELVETICA, 11);
-                    cs.newLineAtOffset(margin, y);
-                    cs.showText("Reward Tier:  " + safeStr(donation.getRewardTier().getTitle()));
-                    cs.endText();
                 }
 
-                // ── Second divider ─────────────────────────────────────────
+                if (rewardTierTitle != null && !rewardTierTitle.isBlank()) {
+                    for (String line : wrapText(italic, 10, "Reward tier: " + rewardTierTitle, descMaxWidth)) {
+                        drawText(cs, italic, 10, MARGIN, y, line, TEXT_GRAY);
+                        y -= 14;
+                    }
+                }
+
+                y -= 6;
+                drawLine(cs, y, LINE_LIGHT, 0.75f);
+                y -= 24;
+
+                // ── Total ────────────────────────────────────────────────────
+                drawText(cs, bold, 12, MARGIN, y, "TOTAL PAID", TEXT_DARK);
+                drawTextRightAligned(cs, bold, 15, CONTENT_RIGHT, y - 1, amountFormatted, ACCENT);
                 y -= 28;
-                cs.moveTo(margin, y);
-                cs.lineTo(margin + contentWidth, y);
-                cs.stroke();
 
-                // ── Total box ─────────────────────────────────────────────
-                y -= 22;
-                cs.beginText();
-                cs.setFont(PDType1Font.HELVETICA_BOLD, 14);
-                cs.newLineAtOffset(margin, y);
-                cs.showText("TOTAL PAID:   Rs. " + String.format("%.2f", donation.getAmount()));
-                cs.endText();
+                drawText(cs, regular, 9, MARGIN, y, "Transaction ID: " + nullSafe(transactionId, "\u2014"), TEXT_GRAY);
+                y -= 50;
 
-                // ── Footer ─────────────────────────────────────────────────
-                y -= 60;
-                cs.beginText();
-                cs.setFont(PDType1Font.HELVETICA_OBLIQUE, 9);
-                cs.newLineAtOffset(margin, y);
-                cs.showText("This is a system-generated receipt and does not require a signature.");
-                cs.endText();
+                // ── Footer / disclaimer ──────────────────────────────────────
+                drawLine(cs, y, LINE_LIGHT, 0.75f);
+                y -= 20;
 
-                y -= 14;
-                cs.beginText();
-                cs.setFont(PDType1Font.HELVETICA_OBLIQUE, 9);
-                cs.newLineAtOffset(margin, y);
-                cs.showText("CrowdSpark is not responsible for the delivery of products/services offered by campaign creators.");
-                cs.endText();
+                List<String> disclaimerLines = wrapText(italic, 8.5f,
+                        "This receipt confirms a contribution processed through CrowdSpark. It is not a GST tax invoice — "
+                                + "please consult a tax advisor regarding the tax treatment of this contribution.",
+                        CONTENT_WIDTH);
+                for (String line : disclaimerLines) {
+                    drawText(cs, italic, 8.5f, MARGIN, y, line, TEXT_GRAY);
+                    y -= 12;
+                }
 
-                y -= 14;
-                cs.beginText();
-                cs.setFont(PDType1Font.HELVETICA_OBLIQUE, 9);
-                cs.newLineAtOffset(margin, y);
-                cs.showText("For support: support@crowdspark.in | www.crowdspark.in");
-                cs.endText();
+                y -= 10;
+                drawText(cs, regular, 9, MARGIN, y, "Thank you for supporting this campaign on CrowdSpark.", TEXT_DARK);
             }
 
             ByteArrayOutputStream out = new ByteArrayOutputStream();
-            doc.save(out);
+            document.save(out);
+            log.info("Generated PDF receipt {} for donationId={}", receiptNo, donationId);
             return out.toByteArray();
 
-        } catch (Exception e) {
-            log.error("PDF receipt generation failed for donationId={}: {}",
-                    donation.getId(), e.getMessage(), e);
-            throw new RuntimeException("Failed to generate PDF receipt", e);
+        } catch (IOException e) {
+            throw new IllegalStateException("Failed to generate PDF receipt for donation " + donationId, e);
         }
     }
 
-    private String safeStr(String s) {
-        return s != null ? s : "";
+    // ─────────────────────────────────────────────────────────────────────────
+    // Drawing helpers
+    // ─────────────────────────────────────────────────────────────────────────
+
+    private void drawText(PDPageContentStream cs, PDFont font, float size, float x, float y, String text, Color color) throws IOException {
+        cs.setNonStrokingColor(color);
+        cs.beginText();
+        cs.setFont(font, size);
+        cs.newLineAtOffset(x, y);
+        cs.showText(text);
+        cs.endText();
+    }
+
+    private void drawTextRightAligned(PDPageContentStream cs, PDFont font, float size, float rightEdge, float y, String text, Color color) throws IOException {
+        float width = font.getStringWidth(text) / 1000 * size;
+        drawText(cs, font, size, rightEdge - width, y, text, color);
+    }
+
+    private void drawLine(PDPageContentStream cs, float y, Color color, float lineWidth) throws IOException {
+        cs.setStrokingColor(color);
+        cs.setLineWidth(lineWidth);
+        cs.moveTo(MARGIN, y);
+        cs.lineTo(CONTENT_RIGHT, y);
+        cs.stroke();
+    }
+
+    private List<String> wrapText(PDFont font, float size, String text, float maxWidth) throws IOException {
+        List<String> lines = new ArrayList<>();
+        StringBuilder current = new StringBuilder();
+        for (String word : text.split(" ")) {
+            String candidate = current.isEmpty() ? word : current + " " + word;
+            if (font.getStringWidth(candidate) / 1000 * size > maxWidth && !current.isEmpty()) {
+                lines.add(current.toString());
+                current = new StringBuilder(word);
+            } else {
+                current = new StringBuilder(candidate);
+            }
+        }
+        if (!current.isEmpty()) {
+            lines.add(current.toString());
+        }
+        return lines;
+    }
+
+    private static String nullSafe(String value, String fallback) {
+        return (value == null || value.isBlank()) ? fallback : value;
+    }
+
+    private static String formatInr(double amount) {
+        NumberFormat nf = NumberFormat.getInstance(Locale.of("en", "IN"));
+        nf.setMinimumFractionDigits(2);
+        nf.setMaximumFractionDigits(2);
+        return "₹" + nf.format(amount);
     }
 }

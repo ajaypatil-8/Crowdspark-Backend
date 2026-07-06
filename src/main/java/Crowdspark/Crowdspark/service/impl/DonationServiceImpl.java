@@ -138,6 +138,7 @@ public class DonationServiceImpl implements DonationService {
                 backer.getName(),
                 project.getTitle(),
                 project.getId(),
+                saved.getId(),
                 saved.getAmount(),
                 saved.getTransactionId(),
                 rewardTier != null ? rewardTier.getTitle() : null,

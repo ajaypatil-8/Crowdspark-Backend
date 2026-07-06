@@ -1,10 +1,11 @@
-// src/main/java/Crowdspark/Crowdspark/service/PdfReceiptService.java
 
 package Crowdspark.Crowdspark.service;
 
-import Crowdspark.Crowdspark.entity.Donation;
+import java.time.LocalDateTime;
 
 public interface PdfReceiptService {
 
-    byte[] generateReceipt(Donation donation);
+
+    byte[] generateReceiptPdf(Long donationId, String backerName, String projectTitle, Double amount,
+                              String transactionId, String rewardTierTitle, LocalDateTime paidAt);
 }
