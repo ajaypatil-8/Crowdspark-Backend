@@ -16,11 +16,16 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
+
+import java.nio.charset.StandardCharsets;
 
 @Slf4j
 @RestController
@@ -59,5 +64,31 @@ public class PaymentController {
         User backer = userService.getByUsername(username);
         DonationResponse response = paymentService.verifyAndConfirm(request, backer.getId());
         return ResponseEntity.ok(ApiResponse.ok("Payment confirmed successfully", response));
+    }
+
+    // FIX #10: this endpoint didn't exist — "expose download endpoint" was never done.
+    @PreAuthorize("isAuthenticated()")
+    @Operation(summary = "Download payment receipt",
+            description = "Downloads the tax invoice / payment receipt PDF for a donation. " +
+                    "Only the backer who made the donation (or an admin) can access it, " +
+                    "and only once the payment has succeeded.",
+            security = @SecurityRequirement(name = "bearerAuth"))
+    @GetMapping("/receipt/{donationId}")
+    public ResponseEntity<byte[]> downloadReceipt(
+            @PathVariable Long donationId,
+            @AuthenticationPrincipal String username
+    ) {
+        User requester = userService.getByUsername(username);
+        byte[] pdf = paymentService.getReceiptPdf(donationId, requester.getId());
+
+        String filename = "CrowdSpark_Receipt_" + donationId + ".pdf";
+        ContentDisposition disposition = ContentDisposition.attachment()
+                .filename(filename, StandardCharsets.UTF_8)
+                .build();
+
+        return ResponseEntity.ok()
+                .contentType(MediaType.APPLICATION_PDF)
+                .header(HttpHeaders.CONTENT_DISPOSITION, disposition.toString())
+                .body(pdf);
     }
 }

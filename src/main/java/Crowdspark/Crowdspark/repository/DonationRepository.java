@@ -11,8 +11,20 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.util.List;
+import java.util.Optional;
 
 public interface DonationRepository extends JpaRepository<Donation, Long> {
+
+    // FIX #10: backs the receipt download endpoint. Fetch-joins backer/project/
+    // creator/rewardTier in one query so PaymentServiceImpl can pull every field
+    // it needs without extra lazy-load round trips.
+    @Query("SELECT d FROM Donation d " +
+           "JOIN FETCH d.backer " +
+           "JOIN FETCH d.project p " +
+           "JOIN FETCH p.creator " +
+           "LEFT JOIN FETCH d.rewardTier " +
+           "WHERE d.id = :id")
+    Optional<Donation> findDetailedById(@Param("id") Long id);
 
     List<Donation> findByBacker_IdOrderByCreatedAtDesc(Long backerId);
 

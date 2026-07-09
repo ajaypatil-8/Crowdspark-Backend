@@ -9,6 +9,7 @@ import Crowdspark.Crowdspark.entity.Project;
 import Crowdspark.Crowdspark.entity.User;
 import Crowdspark.Crowdspark.entity.type.PaymentStatus;
 import Crowdspark.Crowdspark.entity.type.ProjectStatus;
+import Crowdspark.Crowdspark.entity.type.Role;
 import Crowdspark.Crowdspark.repository.DonationRepository;
 import Crowdspark.Crowdspark.repository.ProjectRepository;
 import Crowdspark.Crowdspark.repository.RewardTierRepository;
@@ -31,6 +32,7 @@ import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.Optional;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -47,6 +49,10 @@ class PaymentServiceImplTest {
     @Mock UserRepository        userRepository;
     @Mock RewardTierRepository  rewardTierRepository;
     @Mock NotificationService   notificationService;
+    @Mock FundingStreamService  fundingStreamService;
+    @Mock RewardClaimService    rewardClaimService;
+    @Mock EmailService          emailService;
+    @Mock PdfReceiptService     pdfReceiptService;
 
     @InjectMocks PaymentServiceImpl paymentService;
 
@@ -221,6 +227,103 @@ class PaymentServiceImplTest {
         assertThat(response.getPaymentStatus()).isEqualTo("SUCCESS");
         // No DB writes for already-confirmed donation
         verify(donationRepository, never()).save(any());
+        // ...and no duplicate receipt email either
+        verify(emailService, never()).sendBackerReceiptEmail(
+                any(), any(), any(), any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("verifyAndConfirm sends the receipt email with the donation's own details")
+    void verifyAndConfirm_sendsReceiptEmail_withCorrectDetails() throws Exception {
+        Donation donation = TestDataFactory.pendingDonation(backer, project);
+        given(donationRepository.findById(donation.getId())).willReturn(Optional.of(donation));
+        given(donationRepository.save(any())).willAnswer(inv -> inv.getArgument(0));
+        given(projectRepository.save(any())).willAnswer(inv -> inv.getArgument(0));
+        given(userRepository.save(any())).willAnswer(inv -> inv.getArgument(0));
+
+        String orderId   = "order_abc123";
+        String paymentId = "pay_xyz789";
+        String validSig  = generateHmac(orderId + "|" + paymentId, TEST_KEY_SECRET);
+
+        PaymentVerifyRequest req = new PaymentVerifyRequest();
+        req.setDonationId(donation.getId());
+        req.setRazorpayOrderId(orderId);
+        req.setRazorpayPaymentId(paymentId);
+        req.setRazorpaySignature(validSig);
+
+        paymentService.verifyAndConfirm(req, backer.getId());
+
+        verify(emailService).sendBackerReceiptEmail(
+                eq(backer.getEmail()),
+                eq(backer.getName()),
+                eq(project.getTitle()),
+                eq(project.getId()),
+                eq(donation.getId()),
+                eq(donation.getAmount()),
+                eq(paymentId),
+                any(),
+                any()
+        );
+    }
+
+    // ─── getReceiptPdf (FIX #10) ──────────────────────────────────────────────
+
+    @Test
+    @DisplayName("getReceiptPdf returns PDF bytes for the donation's own backer")
+    void getReceiptPdf_returnsBytes_forOwner() {
+        Donation donation = TestDataFactory.successfulDonation(backer, project);
+        given(donationRepository.findDetailedById(donation.getId())).willReturn(Optional.of(donation));
+        given(pdfReceiptService.generateReceiptPdf(
+                eq(donation.getId()), any(), any(), any(), any(), any(), any()))
+                .willReturn(new byte[]{1, 2, 3});
+
+        byte[] result = paymentService.getReceiptPdf(donation.getId(), backer.getId());
+
+        assertThat(result).containsExactly(1, 2, 3);
+    }
+
+    @Test
+    @DisplayName("getReceiptPdf allows an admin to access a receipt they didn't make")
+    void getReceiptPdf_allowsAdmin_evenIfNotOwner() {
+        Donation donation = TestDataFactory.successfulDonation(backer, project);
+        given(donationRepository.findDetailedById(donation.getId())).willReturn(Optional.of(donation));
+
+        User admin = TestDataFactory.adminUser();
+        given(userRepository.findById(admin.getId())).willReturn(Optional.of(admin));
+        given(pdfReceiptService.generateReceiptPdf(
+                eq(donation.getId()), any(), any(), any(), any(), any(), any()))
+                .willReturn(new byte[]{9});
+
+        byte[] result = paymentService.getReceiptPdf(donation.getId(), admin.getId());
+
+        assertThat(result).containsExactly(9);
+    }
+
+    @Test
+    @DisplayName("getReceiptPdf throws 403 for a user who is neither the backer nor an admin")
+    void getReceiptPdf_throws403_forUnrelatedUser() {
+        Donation donation = TestDataFactory.successfulDonation(backer, project);
+        given(donationRepository.findDetailedById(donation.getId())).willReturn(Optional.of(donation));
+
+        User stranger = new User();
+        stranger.setId(999L);
+        stranger.setRoles(Set.of(Role.BACKER));
+        given(userRepository.findById(stranger.getId())).willReturn(Optional.of(stranger));
+
+        assertThatThrownBy(() -> paymentService.getReceiptPdf(donation.getId(), stranger.getId()))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("permission");
+    }
+
+    @Test
+    @DisplayName("getReceiptPdf throws 400 when the donation hasn't succeeded yet")
+    void getReceiptPdf_throws400_whenNotYetSuccessful() {
+        Donation donation = TestDataFactory.pendingDonation(backer, project);
+        given(donationRepository.findDetailedById(donation.getId())).willReturn(Optional.of(donation));
+
+        assertThatThrownBy(() -> paymentService.getReceiptPdf(donation.getId(), backer.getId()))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("successful payments");
     }
 
     // ─── helper: generate real HMAC-SHA256 ───────────────────────────────────

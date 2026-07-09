@@ -19,10 +19,12 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.Map;
 
+import static org.hamcrest.Matchers.containsString;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.willReturn;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -40,10 +42,10 @@ class PaymentControllerTest {
     @MockBean UserService             userService;
     @MockBean JwtAuthenticationFilter jwtFilter;
 
-    // ─── POST /api/payment/create-order ──────────────────────────────────────
+    // ─── POST /api/v1/payment/create-order ──────────────────────────────────────
 
     @Test
-    @DisplayName("POST /api/payment/create-order → 201 with valid payload")
+    @DisplayName("POST /api/v1/payment/create-order → 201 with valid payload")
     void createOrder_returns201_withValidPayload() throws Exception {
         User backer = TestDataFactory.backerUser();
         given(userService.getByUsername(any())).willReturn(backer);
@@ -62,7 +64,7 @@ class PaymentControllerTest {
                 "amount",    1000.0
         );
 
-        mockMvc.perform(post("/api/payment/create-order")
+        mockMvc.perform(post("/api/v1/payment/create-order")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(body))
                         .principal(() -> "testbacker"))
@@ -75,12 +77,12 @@ class PaymentControllerTest {
     }
 
     @Test
-    @DisplayName("POST /api/payment/create-order → 400 when amount is missing")
+    @DisplayName("POST /api/v1/payment/create-order → 400 when amount is missing")
     void createOrder_returns400_whenAmountMissing() throws Exception {
         Map<String, Object> body = Map.of("projectId", 10);
         // amount is null → @NotNull validation fails
 
-        mockMvc.perform(post("/api/payment/create-order")
+        mockMvc.perform(post("/api/v1/payment/create-order")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(body))
                         .principal(() -> "testbacker"))
@@ -88,31 +90,50 @@ class PaymentControllerTest {
     }
 
     @Test
-    @DisplayName("POST /api/payment/create-order → 400 when projectId is missing")
+    @DisplayName("POST /api/v1/payment/create-order → 400 when projectId is missing")
     void createOrder_returns400_whenProjectIdMissing() throws Exception {
         Map<String, Object> body = Map.of("amount", 1000.0);
 
-        mockMvc.perform(post("/api/payment/create-order")
+        mockMvc.perform(post("/api/v1/payment/create-order")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(body))
                         .principal(() -> "testbacker"))
                 .andExpect(status().isBadRequest());
     }
 
-    // ─── POST /api/payment/verify ─────────────────────────────────────────────
+    // ─── POST /api/v1/payment/verify ─────────────────────────────────────────────
 
     @Test
-    @DisplayName("POST /api/payment/verify → 400 when required fields missing")
+    @DisplayName("POST /api/v1/payment/verify → 400 when required fields missing")
     void verify_returns400_whenFieldsMissing() throws Exception {
         Map<String, Object> body = Map.of(
                 "donationId", 100
                 // missing razorpayPaymentId, razorpayOrderId, razorpaySignature
         );
 
-        mockMvc.perform(post("/api/payment/verify")
+        mockMvc.perform(post("/api/v1/payment/verify")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(body))
                         .principal(() -> "testbacker"))
                 .andExpect(status().isBadRequest());
+    }
+
+    // ─── GET /api/v1/payment/receipt/{donationId} ────────────────────────────
+
+    @Test
+    @DisplayName("GET /api/v1/payment/receipt/{id} → 200 with the PDF bytes")
+    void downloadReceipt_returns200_withPdfBytes() throws Exception {
+        User backer = TestDataFactory.backerUser();
+        given(userService.getByUsername(any())).willReturn(backer);
+
+        byte[] fakePdf = "%PDF-1.4 fake-content".getBytes();
+        given(paymentService.getReceiptPdf(100L, backer.getId())).willReturn(fakePdf);
+
+        mockMvc.perform(get("/api/v1/payment/receipt/100")
+                        .principal(() -> "testbacker"))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(MediaType.APPLICATION_PDF))
+                .andExpect(header().string("Content-Disposition", containsString("CrowdSpark_Receipt_100.pdf")))
+                .andExpect(content().bytes(fakePdf));
     }
 }

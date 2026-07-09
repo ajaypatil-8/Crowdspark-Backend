@@ -12,6 +12,7 @@ import Crowdspark.Crowdspark.entity.User;
 import Crowdspark.Crowdspark.entity.type.MediaUsage;
 import Crowdspark.Crowdspark.entity.type.PaymentStatus;
 import Crowdspark.Crowdspark.entity.type.ProjectStatus;
+import Crowdspark.Crowdspark.entity.type.Role;
 import Crowdspark.Crowdspark.repository.DonationRepository;
 import Crowdspark.Crowdspark.repository.ProjectRepository;
 import Crowdspark.Crowdspark.repository.RewardTierRepository;
@@ -20,6 +21,7 @@ import Crowdspark.Crowdspark.service.EmailService;
 import Crowdspark.Crowdspark.service.FundingStreamService;
 import Crowdspark.Crowdspark.service.NotificationService;
 import Crowdspark.Crowdspark.service.PaymentService;
+import Crowdspark.Crowdspark.service.PdfReceiptService;
 import Crowdspark.Crowdspark.service.RewardClaimService;
 import com.razorpay.Order;
 import com.razorpay.RazorpayClient;
@@ -53,6 +55,7 @@ public class PaymentServiceImpl implements PaymentService {
     private final FundingStreamService fundingStreamService;
     private final RewardClaimService rewardClaimService;
     private final EmailService emailService; // ← Feature #9
+    private final PdfReceiptService pdfReceiptService; // ← FIX #10: on-demand download
 
     @Value("${razorpay.key-id}")
     private String razorpayKeyId;
@@ -241,6 +244,45 @@ public class PaymentServiceImpl implements PaymentService {
         );
 
         return toResponse(donation);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // FIX #10 — on-demand receipt download (this didn't exist at all before)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    @Override
+    @Transactional(readOnly = true)
+    public byte[] getReceiptPdf(Long donationId, Long requesterId) {
+
+        Donation donation = donationRepository.findDetailedById(donationId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Donation not found"));
+
+        boolean isOwner = donation.getBacker().getId().equals(requesterId);
+        if (!isOwner) {
+            User requester = userRepository.findById(requesterId)
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
+            if (!requester.hasRole(Role.ADMIN)) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                        "You do not have permission to view this receipt");
+            }
+        }
+
+        if (donation.getPaymentStatus() != PaymentStatus.SUCCESS) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "A receipt is only available for successful payments");
+        }
+
+        String rewardTierTitle = donation.getRewardTier() != null ? donation.getRewardTier().getTitle() : null;
+
+        return pdfReceiptService.generateReceiptPdf(
+                donation.getId(),
+                donation.getBacker().getName(),
+                donation.getProject().getTitle(),
+                donation.getAmount(),
+                donation.getTransactionId(),
+                rewardTierTitle,
+                donation.getPaidAt()
+        );
     }
 
     // ─────────────────────────────────────────────────────────────────────────

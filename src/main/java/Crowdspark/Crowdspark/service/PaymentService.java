@@ -21,4 +21,12 @@ public interface PaymentService {
      * updates backer/creator stats, and fires notifications.
      */
     DonationResponse verifyAndConfirm(PaymentVerifyRequest request, Long backerId);
+
+    /**
+     * FIX #10 — on-demand receipt download.
+     * Returns the tax-invoice/payment-receipt PDF for a donation.
+     * Only the backer who made the donation (or an admin) may fetch it, and
+     * only once the payment has actually succeeded.
+     */
+    byte[] getReceiptPdf(Long donationId, Long requesterId);
 }

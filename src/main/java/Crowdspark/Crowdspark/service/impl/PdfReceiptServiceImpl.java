@@ -57,6 +57,13 @@ public class PdfReceiptServiceImpl implements PdfReceiptService {
             String receiptNo = "CS-" + String.format("%06d", donationId == null ? 0L : donationId);
             String dateStr = (paidAt == null ? LocalDateTime.now() : paidAt).format(DATE_FORMAT);
 
+            // FIX #10: sanitize every user-supplied string before it ever reaches
+            // showText() — see sanitizeForPdf() for why.
+            String safeBackerName      = sanitizeForPdf(backerName);
+            String safeProjectTitle    = sanitizeForPdf(projectTitle);
+            String safeRewardTierTitle = sanitizeForPdf(rewardTierTitle);
+            String safeTransactionId   = sanitizeForPdf(transactionId);
+
             try (PDPageContentStream cs = new PDPageContentStream(document, page)) {
 
                 float y = PAGE_HEIGHT - 70;
@@ -79,7 +86,7 @@ public class PdfReceiptServiceImpl implements PdfReceiptService {
                 // ── Received from ───────────────────────────────────────────
                 drawText(cs, regular, 9, MARGIN, y, "RECEIVED FROM", TEXT_GRAY);
                 y -= 15;
-                drawText(cs, bold, 12, MARGIN, y, nullSafe(backerName, "Backer"), TEXT_DARK);
+                drawText(cs, bold, 12, MARGIN, y, nullSafe(safeBackerName, "Backer"), TEXT_DARK);
                 y -= 26;
 
                 drawLine(cs, y, LINE_LIGHT, 0.75f);
@@ -91,7 +98,7 @@ public class PdfReceiptServiceImpl implements PdfReceiptService {
                 y -= 18;
 
                 float descMaxWidth = 330f;
-                List<String> titleLines = wrapText(regular, 12, "Contribution to \"" + nullSafe(projectTitle, "a CrowdSpark project") + "\"", descMaxWidth);
+                List<String> titleLines = wrapText(regular, 12, "Contribution to \"" + nullSafe(safeProjectTitle, "a CrowdSpark project") + "\"", descMaxWidth);
                 for (int i = 0; i < titleLines.size(); i++) {
                     drawText(cs, regular, 12, MARGIN, y, titleLines.get(i), TEXT_DARK);
                     if (i == 0) {
@@ -100,8 +107,8 @@ public class PdfReceiptServiceImpl implements PdfReceiptService {
                     y -= 16;
                 }
 
-                if (rewardTierTitle != null && !rewardTierTitle.isBlank()) {
-                    for (String line : wrapText(italic, 10, "Reward tier: " + rewardTierTitle, descMaxWidth)) {
+                if (!safeRewardTierTitle.isBlank()) {
+                    for (String line : wrapText(italic, 10, "Reward tier: " + safeRewardTierTitle, descMaxWidth)) {
                         drawText(cs, italic, 10, MARGIN, y, line, TEXT_GRAY);
                         y -= 14;
                     }
@@ -116,7 +123,7 @@ public class PdfReceiptServiceImpl implements PdfReceiptService {
                 drawTextRightAligned(cs, bold, 15, CONTENT_RIGHT, y - 1, amountFormatted, ACCENT);
                 y -= 28;
 
-                drawText(cs, regular, 9, MARGIN, y, "Transaction ID: " + nullSafe(transactionId, "\u2014"), TEXT_GRAY);
+                drawText(cs, regular, 9, MARGIN, y, "Transaction ID: " + nullSafe(safeTransactionId, "\u2014"), TEXT_GRAY);
                 y -= 50;
 
                 // ── Footer / disclaimer ──────────────────────────────────────
@@ -194,10 +201,41 @@ public class PdfReceiptServiceImpl implements PdfReceiptService {
         return (value == null || value.isBlank()) ? fallback : value;
     }
 
+    /**
+     * FIX #10 (critical): strips characters PDFBox's Standard-14 fonts can't render.
+     * Helvetica/Times/Courier only support WinAnsiEncoding — this covers printable
+     * ASCII plus the Latin-1 supplement, but NOT ₹, emoji, or most non-Latin scripts.
+     * Calling showText() with an unsupported character throws IllegalArgumentException
+     * at generation time — which is exactly what was happening here, on every single
+     * receipt, because formatInr() used to embed the literal "₹" character.
+     * A project title or backer name with an emoji would fail the exact same way,
+     * so this is applied to every user-supplied string, not just the amount.
+     */
+    private static String sanitizeForPdf(String text) {
+        if (text == null) return "";
+        StringBuilder sb = new StringBuilder(text.length());
+        for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            if ((c >= 0x20 && c <= 0x7E) || (c >= 0xA0 && c <= 0xFF)) {
+                sb.append(c); // printable ASCII or Latin-1 supplement — safe in WinAnsiEncoding
+            } else if (c == '\u2018' || c == '\u2019') {
+                sb.append('\'');
+            } else if (c == '\u201C' || c == '\u201D') {
+                sb.append('"');
+            } else if (c == '\u2013' || c == '\u2014') {
+                sb.append('-');
+            }
+            // else: drop it (₹, emoji, CJK/Devanagari/etc. — anything else outside WinAnsi)
+        }
+        return sb.toString();
+    }
+
     private static String formatInr(double amount) {
         NumberFormat nf = NumberFormat.getInstance(Locale.of("en", "IN"));
         nf.setMinimumFractionDigits(2);
         nf.setMaximumFractionDigits(2);
-        return "₹" + nf.format(amount);
+        // "Rs." rather than "₹": see sanitizeForPdf doc above — ₹ (U+20B9) is not in
+        // WinAnsiEncoding, so this exact line was crashing every PDF receipt.
+        return "Rs. " + nf.format(amount);
     }
 }

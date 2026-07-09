@@ -29,7 +29,7 @@ public class TestDataFactory {
         u.setPassword("$2a$10$dummyHashedPassword");
         u.setEmailVerified(true);
         u.setKycVerified(false);
-        u.setRoles(Set.of(Role.ROLE_BACKER));
+        u.setRoles(Set.of(Role.BACKER));
         u.setTotalProjectsBacked(0);
         u.setTotalAmountBacked(0.0);
         u.setTotalProjectsCreated(0);
@@ -47,7 +47,7 @@ public class TestDataFactory {
         u.setEmailVerified(true);
         u.setKycVerified(true);
         u.setUpiId("creator@upi");
-        u.setRoles(Set.of(Role.ROLE_CREATOR));
+        u.setRoles(Set.of(Role.CREATOR));
         u.setTotalProjectsBacked(0);
         u.setTotalAmountBacked(0.0);
         u.setTotalProjectsCreated(1);
@@ -63,7 +63,7 @@ public class TestDataFactory {
         u.setEmail("admin@test.com");
         u.setPassword("$2a$10$dummyHashedPassword");
         u.setEmailVerified(true);
-        u.setRoles(Set.of(Role.ROLE_ADMIN));
+        u.setRoles(Set.of(Role.ADMIN));
         return u;
     }
 
