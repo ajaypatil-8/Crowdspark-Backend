@@ -56,8 +56,15 @@ public class GdprServiceImpl implements GdprService {
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND, "User not found"));
 
-        // 1. Verify password before doing anything destructive
-        if (!passwordEncoder.matches(request.getPassword(), user.getPassword())) {
+        // Verify password before doing anything destructive. OAuth-only accounts
+        // (Google sign-in) never have a local password set — user.getPassword()
+        // is null — and BCryptPasswordEncoder.matches(raw, null) always returns
+        // false, so without this branch those users could never pass this check
+        // no matter what they typed, permanently locking them out of deleting
+        // their own account. The request already arrived on a valid JWT for this
+        // exact user, which is the only "credential" an OAuth-only account has.
+        boolean hasLocalPassword = user.getPassword() != null && !user.getPassword().isBlank();
+        if (hasLocalPassword && !passwordEncoder.matches(request.getPassword(), user.getPassword())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                     "Incorrect password. Account deletion cancelled.");
         }
@@ -68,7 +75,26 @@ public class GdprServiceImpl implements GdprService {
                     "Account is already deleted.");
         }
 
+        // Block deletion while a campaign is still live and raising funds: Step 9
+        // below wipes bank/UPI details, and payout (Feature #3) has no fallback
+        // if the creator is gone by the time the campaign is FUNDED — the project
+        // would keep collecting donations with nowhere valid to send the payout.
+        List<Project> userProjects = projectRepository.findByCreatorOrderByCreatedAtDesc(user);
+        boolean hasLiveCampaign = userProjects.stream()
+                .anyMatch(p -> p.getStatus() == ProjectStatus.APPROVED);
+        if (hasLiveCampaign) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "You have an active campaign that is still raising funds. " +
+                    "Please wait until it's funded or closed, or contact support@crowdspark.in.");
+        }
+
         log.info("GDPR account deletion initiated for userId={}", userId);
+        if (request.getReason() != null && !request.getReason().isBlank()) {
+            // Logged (not stored against the user record, which is about to be
+            // anonymised) so exit-reason trends are still visible in aggregate
+            // via log analytics, per this field's intent.
+            log.info("Deletion reason for userId={}: {}", userId, request.getReason());
+        }
 
         // ── Step 1: Revoke all sessions ───────────────────────────────────────
         refreshTokenService.revokeAll(userId);
@@ -86,7 +112,9 @@ public class GdprServiceImpl implements GdprService {
         log.info("Cancelled {} pending donations for userId={}", pendingDonations.size(), userId);
 
         // ── Step 3: Handle projects created by this user ──────────────────────
-        List<Project> userProjects = projectRepository.findByCreatorOrderByCreatedAtDesc(user);
+        // (userProjects already fetched above; the APPROVED/live case is blocked
+        // before we ever get here, so only PENDING/DRAFT/FUNDED/FAILED/REJECTED
+        // can appear in this loop)
         for (Project project : userProjects) {
             if (project.getStatus() == ProjectStatus.PENDING
                     || project.getStatus() == ProjectStatus.DRAFT) {
@@ -95,7 +123,7 @@ public class GdprServiceImpl implements GdprService {
                 project.setRejectionReason("Creator account deleted");
                 projectRepository.save(project);
             }
-            // APPROVED / FUNDED / FAILED projects: keep visible with anonymous creator
+            // FUNDED / FAILED / REJECTED projects: keep visible with anonymous creator
         }
         log.info("Processed {} projects for userId={}", userProjects.size(), userId);
 
