@@ -5,6 +5,7 @@ import Crowdspark.Crowdspark.dto.LoginResponse;
 import Crowdspark.Crowdspark.dto.UserResponse;
 import Crowdspark.Crowdspark.entity.RefreshToken;
 import Crowdspark.Crowdspark.entity.User;
+import Crowdspark.Crowdspark.repository.OtpRepository;
 import Crowdspark.Crowdspark.security.JwtAuthenticationFilter;
 import Crowdspark.Crowdspark.service.AuthService;
 import Crowdspark.Crowdspark.service.EmailService;
@@ -20,6 +21,7 @@ import org.springframework.boot.autoconfigure.security.servlet.SecurityAutoConfi
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.LocalDateTime;
@@ -47,6 +49,8 @@ class AuthControllerTest {
     @MockBean JwtUtil              jwtUtil;
     @MockBean RefreshTokenService  refreshTokenService;
     @MockBean EmailService         emailService;
+    @MockBean OtpRepository        otpRepository;
+    @MockBean PasswordEncoder      passwordEncoder;
     @MockBean JwtAuthenticationFilter jwtFilter;
 
     // ─── POST /auth/register ──────────────────────────────────────────────────

@@ -58,14 +58,14 @@ class ProjectControllerTest {
                 .build();
     }
 
-    // ─── GET /api/projects/feed ───────────────────────────────────────────────
+    // ─── GET /api/v1/projects/feed ───────────────────────────────────────────────
 
     @Test
-    @DisplayName("GET /api/projects/feed → 200 with list of projects")
+    @DisplayName("GET /api/v1/projects/feed → 200 with list of projects")
     void getFeed_returns200_withProjects() throws Exception {
         given(projectService.getProjectFeed()).willReturn(List.of(sampleFeedItem()));
 
-        mockMvc.perform(get("/api/projects/feed"))
+        mockMvc.perform(get("/api/v1/projects/feed"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data[0].id").value(10))
@@ -74,20 +74,20 @@ class ProjectControllerTest {
     }
 
     @Test
-    @DisplayName("GET /api/projects/feed → 200 with empty list")
+    @DisplayName("GET /api/v1/projects/feed → 200 with empty list")
     void getFeed_returns200_withEmptyList() throws Exception {
         given(projectService.getProjectFeed()).willReturn(List.of());
 
-        mockMvc.perform(get("/api/projects/feed"))
+        mockMvc.perform(get("/api/v1/projects/feed"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data").isArray())
                 .andExpect(jsonPath("$.data").isEmpty());
     }
 
-    // ─── GET /api/projects/{id} ───────────────────────────────────────────────
+    // ─── GET /api/v1/projects/{id} ───────────────────────────────────────────────
 
     @Test
-    @DisplayName("GET /api/projects/{id} → 200 with full project details")
+    @DisplayName("GET /api/v1/projects/{id} → 200 with full project details")
     void getProjectDetails_returns200() throws Exception {
         ProjectFullDetailsResponse details = ProjectFullDetailsResponse.builder()
                 .id(10L)
@@ -109,7 +109,7 @@ class ProjectControllerTest {
 
         given(projectService.getProjectDetails(10L)).willReturn(details);
 
-        mockMvc.perform(get("/api/projects/10"))
+        mockMvc.perform(get("/api/v1/projects/10"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.id").value(10))
@@ -118,15 +118,15 @@ class ProjectControllerTest {
                 .andExpect(jsonPath("$.data.backersCount").value(5));
     }
 
-    // ─── GET /api/projects/explore ────────────────────────────────────────────
+    // ─── GET /api/v1/projects/explore ────────────────────────────────────────────
 
     @Test
-    @DisplayName("GET /api/projects/explore → 200 with paginated results")
+    @DisplayName("GET /api/v1/projects/explore → 200 with paginated results")
     void explore_returns200_withPaginatedResults() throws Exception {
         var page = new PageImpl<>(List.of(sampleFeedItem()), PageRequest.of(0, 12), 1);
         given(projectService.exploreProjects(any())).willReturn(page);
 
-        mockMvc.perform(get("/api/projects/explore")
+        mockMvc.perform(get("/api/v1/projects/explore")
                         .param("page", "0")
                         .param("size", "12")
                         .param("sort", "LATEST"))

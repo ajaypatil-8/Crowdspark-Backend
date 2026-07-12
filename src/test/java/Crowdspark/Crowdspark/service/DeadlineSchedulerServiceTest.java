@@ -34,6 +34,8 @@ class DeadlineSchedulerServiceTest {
     @Mock DonationRepository   donationRepository;
     @Mock NotificationService  notificationService;
     @Mock RefundService        refundService;
+    @Mock FundingStreamService fundingStreamService;
+    @Mock EmailService         emailService;
 
     @InjectMocks DeadlineSchedulerService scheduler;
 
