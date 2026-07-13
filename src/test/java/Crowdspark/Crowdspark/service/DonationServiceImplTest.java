@@ -345,4 +345,17 @@ class DonationServiceImplTest {
         assertThat(result).hasSize(1);
         assertThat(result.get(0).getProjectId()).isEqualTo(project.getId());
     }
+    @Test
+    @DisplayName("donate broadcasts a live funding update via SSE (Feature #15 fix — this endpoint used to skip it entirely)")
+    void donate_broadcastsFundingUpdate() {
+        given(userRepository.findById(backer.getId())).willReturn(Optional.of(backer));
+        given(projectRepository.findById(project.getId())).willReturn(Optional.of(project));
+        stubDonationSave();
+
+        donationService.donate(requestFor(5_000.0), backer.getId());
+
+        verify(fundingStreamService).buildSnapshot(project.getId());
+        verify(fundingStreamService).broadcast(eq(project.getId()), any());
+    }
+
 }

@@ -14,6 +14,7 @@ import Crowdspark.Crowdspark.repository.ProjectRepository;
 import Crowdspark.Crowdspark.repository.RewardTierRepository;
 import Crowdspark.Crowdspark.repository.UserRepository;
 import Crowdspark.Crowdspark.service.DonationService;
+import Crowdspark.Crowdspark.service.FundingStreamService;
 import Crowdspark.Crowdspark.service.NotificationService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.cache.annotation.CacheEvict;
@@ -35,6 +36,7 @@ public class DonationServiceImpl implements DonationService {
     private final RewardTierRepository  rewardTierRepository;
     private final NotificationService   notificationService;
     private final EmailService emailService;
+    private final FundingStreamService fundingStreamService; // ← Feature #15 fix
 
     @Override
     @Transactional
@@ -119,6 +121,16 @@ public class DonationServiceImpl implements DonationService {
         }
 
         projectRepository.save(project);
+
+        // Feature #15 fix: this legacy direct-donate path never broadcast a funding
+        // update — anyone watching the live funding bar via SSE saw nothing change
+        // until they refreshed. PaymentServiceImpl's Razorpay path already does this;
+        // this endpoint produces the exact same kind of SUCCESS donation, so it needs
+        // the same broadcast.
+        fundingStreamService.broadcast(
+                project.getId(),
+                fundingStreamService.buildSnapshot(project.getId())
+        );
 
         // 6. Update backer stats
         backer.setTotalProjectsBacked(backer.getTotalProjectsBacked() + 1);
