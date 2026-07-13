@@ -155,11 +155,17 @@ public class FundingStreamServiceImpl implements FundingStreamService {
 
     // ── private helpers ───────────────────────────────────────────────────────
 
+    // FIX #15: was list = emitters.get(projectId); ...; emitters.remove(projectId) as
+    // separate steps. If a new client subscribed to the same project in the gap
+    // between this thread's list.isEmpty() check and its emitters.remove(projectId)
+    // call, that new subscriber's emitter got added to the (about-to-be-deleted) list
+    // and then silently vanished with it — they'd get their initial snapshot but never
+    // another broadcast again, with no error anywhere. computeIfPresent makes the
+    // whole read-modify-write atomic per key, closing that window.
     private void removeEmitter(Long projectId, SseEmitter emitter) {
-        List<SseEmitter> list = emitters.get(projectId);
-        if (list != null) {
+        emitters.computeIfPresent(projectId, (id, list) -> {
             list.remove(emitter);
-            if (list.isEmpty()) emitters.remove(projectId);
-        }
+            return list.isEmpty() ? null : list;
+        });
     }
 }

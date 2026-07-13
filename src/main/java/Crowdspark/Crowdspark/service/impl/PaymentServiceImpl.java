@@ -35,6 +35,8 @@ import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.server.ResponseStatusException;
 
 import javax.crypto.Mac;
@@ -208,10 +210,33 @@ public class PaymentServiceImpl implements PaymentService {
         }
         projectRepository.save(project);
 
-        fundingStreamService.broadcast(
-                project.getId(),
-                fundingStreamService.buildSnapshot(project.getId())
-        );
+        // FIX #15: this used to broadcast immediately, mid-transaction. If
+        // anything below (backer/creator stat updates, notifications) had
+        // thrown and rolled this transaction back, every connected viewer
+        // would already have been pushed a funding amount that the DB never
+        // actually committed to. Deferring to afterCommit — and rebuilding
+        // the snapshot fresh at that point rather than reusing `project` —
+        // guarantees viewers only ever see amounts that are actually real,
+        // and reflect any other donation that committed in the meantime too.
+        Long broadcastProjectId = project.getId();
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    fundingStreamService.broadcast(
+                            broadcastProjectId,
+                            fundingStreamService.buildSnapshot(broadcastProjectId)
+                    );
+                }
+            });
+        } else {
+            // No transaction in progress (e.g. called directly in a unit test) —
+            // fire immediately rather than silently dropping the broadcast.
+            fundingStreamService.broadcast(
+                    broadcastProjectId,
+                    fundingStreamService.buildSnapshot(broadcastProjectId)
+            );
+        }
 
         // 7. Update backer stats
         User backer = donation.getBacker();
