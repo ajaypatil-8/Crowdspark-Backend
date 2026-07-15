@@ -59,13 +59,29 @@ public interface ProjectRepository extends JpaRepository<Project, Long> {
     //   2. ILIKE fallback               — catches partial words / short queries
     //      e.g. "art" matches "artist" even if not in tsvector
     // Results ordered by: sort param → ts_rank → newest.
+    //
+    // BUG FIX (Feature #16): the previous version used `SELECT DISTINCT p.*`
+    // together with a `LEFT JOIN project_categories` (needed to de-duplicate the
+    // fan-out from that join) and an ORDER BY containing expressions
+    // (the CASE/current_amount switch and ts_rank(...)) that are NOT in the
+    // select list. PostgreSQL rejects that combination outright:
+    //   "ERROR: for SELECT DISTINCT, ORDER BY expressions must appear in select list"
+    // meaning every single keyword search request threw a 500 error and never
+    // returned results. Fixed by filtering on category via an EXISTS subquery
+    // instead of a join — this removes the row fan-out entirely, so DISTINCT
+    // is no longer needed and the ORDER BY is unrestricted.
+    // Also added the missing ENDING_SOON case — previously any request with
+    // sort=ENDING_SOON *and* a keyword silently fell back to relevance/newest
+    // ordering instead of honoring the requested deadline-ascending sort.
 
     @Query(value = """
-        SELECT DISTINCT p.*
+        SELECT p.*
         FROM   projects p
-        LEFT   JOIN project_categories pc ON pc.project_id = p.id
         WHERE  p.status = 'APPROVED'
-        AND   (:categoryId IS NULL OR pc.category_id = :categoryId)
+        AND   (:categoryId IS NULL OR EXISTS (
+                  SELECT 1 FROM project_categories pc
+                  WHERE pc.project_id = p.id AND pc.category_id = :categoryId
+              ))
         AND   (
                   p.search_vector @@ plainto_tsquery('english', :keyword)
                OR LOWER(p.title)             LIKE LOWER('%' || :keyword || '%')
@@ -74,22 +90,26 @@ public interface ProjectRepository extends JpaRepository<Project, Long> {
         ORDER BY
             CASE WHEN :sort IN ('MOST_FUNDED','TRENDING')
                  THEN p.current_amount END DESC NULLS LAST,
+            CASE WHEN :sort = 'ENDING_SOON'
+                 THEN p.deadline END ASC NULLS LAST,
             ts_rank(p.search_vector, plainto_tsquery('english', :keyword)) DESC,
             p.created_at DESC
         """,
-        countQuery = """
-        SELECT COUNT(DISTINCT p.id)
+            countQuery = """
+        SELECT COUNT(*)
         FROM   projects p
-        LEFT   JOIN project_categories pc ON pc.project_id = p.id
         WHERE  p.status = 'APPROVED'
-        AND   (:categoryId IS NULL OR pc.category_id = :categoryId)
+        AND   (:categoryId IS NULL OR EXISTS (
+                  SELECT 1 FROM project_categories pc
+                  WHERE pc.project_id = p.id AND pc.category_id = :categoryId
+              ))
         AND   (
                   p.search_vector @@ plainto_tsquery('english', :keyword)
                OR LOWER(p.title)             LIKE LOWER('%' || :keyword || '%')
                OR LOWER(p.short_description) LIKE LOWER('%' || :keyword || '%')
               )
         """,
-        nativeQuery = true)
+            nativeQuery = true)
     Page<Project> searchWithFts(
             @Param("categoryId") Long   categoryId,
             @Param("keyword")    String keyword,
