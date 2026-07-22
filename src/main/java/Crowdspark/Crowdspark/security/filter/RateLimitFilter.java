@@ -57,6 +57,25 @@ public class RateLimitFilter extends OncePerRequestFilter {
     @Value("${rate-limit.send-otp.window-seconds:300}")
     private int otpWindow;
 
+    // BUG FIX (Feature #23): /auth/totp/verify-login had NO rate limit at all.
+    // A pendingToken only requires the account PASSWORD to obtain (issued
+    // before 2FA is checked), so without a limiter here an attacker who knows
+    // just the password could brute-force the 6-digit TOTP code with
+    // unlimited attempts — 1,000,000 combinations is trivially reachable with
+    // no throttling, which defeats the entire point of having 2FA. Also
+    // covering enable/disable for defense in depth, though those require an
+    // already-authenticated session first, which narrows that attack surface
+    // considerably compared to verify-login.
+    @Value("${rate-limit.totp-verify.max-requests:5}")
+    private int totpVerifyMax;
+    @Value("${rate-limit.totp-verify.window-seconds:300}")
+    private int totpVerifyWindow;
+
+    @Value("${rate-limit.totp-mutate.max-requests:5}")
+    private int totpMutateMax;
+    @Value("${rate-limit.totp-mutate.window-seconds:300}")
+    private int totpMutateWindow;
+
     // ── Endpoint → RateLimit map ──────────────────────────────────────────────
     // Built lazily after @Value injection is complete
     private Map<String, RateLimit> limits;
@@ -69,6 +88,9 @@ public class RateLimitFilter extends OncePerRequestFilter {
             limits.put("/auth/forgot-password",      new RateLimit("forgot",   forgotMax,   forgotWindow));
             limits.put("/auth/reset-password",       new RateLimit("reset",    resetMax,    resetWindow));
             limits.put("/api/creator/send-otp",      new RateLimit("otp",      otpMax,      otpWindow));
+            limits.put("/auth/totp/verify-login",    new RateLimit("totp-verify",  totpVerifyMax, totpVerifyWindow));
+            limits.put("/auth/totp/enable",          new RateLimit("totp-enable",  totpMutateMax, totpMutateWindow));
+            limits.put("/auth/totp/disable",         new RateLimit("totp-disable", totpMutateMax, totpMutateWindow));
         }
         return limits;
     }

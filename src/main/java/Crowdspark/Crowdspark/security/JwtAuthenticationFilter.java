@@ -49,11 +49,31 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         Claims claims = jwtUtil.extractClaims(token);
 
+        // BUG FIX (Feature #23): pending-2FA tokens (issued after password
+        // check, before the TOTP code is verified) must never be usable as a
+        // general-purpose Bearer token — only /auth/totp/verify-login should
+        // ever accept them. Previously this wasn't checked at all here, and
+        // since generatePendingTotpToken() never sets a "roles" claim, the
+        // roles.stream() call below would NullPointerException on any request
+        // that presented one — an uncontrolled 500 crash, not a clean
+        // rejection, and not something a security filter should rely on.
+        // Explicitly reject by type, and treat a missing roles claim the same
+        // way as "no token" / "invalid token" rather than crashing.
+        if ("pending_totp".equals(claims.get("type", String.class))) {
+            filterChain.doFilter(request, response);
+            return;
+        }
+
         // 👤 userId stored in JWT subject
         String userId = claims.getSubject();
 
         // 🎭 roles
         List<String> roles = claims.get("roles", List.class);
+
+        if (roles == null) {
+            filterChain.doFilter(request, response);
+            return;
+        }
 
         // convert roles to authorities
         var authorities = roles.stream()
