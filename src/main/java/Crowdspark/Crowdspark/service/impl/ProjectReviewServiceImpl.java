@@ -60,13 +60,13 @@ public class ProjectReviewServiceImpl implements ProjectReviewService {
 
         if (currentUserId != null) {
             myReview = reviewRepository
-                .findByProject_IdAndReviewer_Id(projectId, currentUserId)
-                .map(r -> toResponse(r, currentUserId))
-                .orElse(null);
+                    .findByProject_IdAndReviewer_Id(projectId, currentUserId)
+                    .map(r -> toResponse(r, currentUserId))
+                    .orElse(null);
 
             boolean alreadyReviewed = myReview != null;
-            boolean hasBacked = donationRepository.existsByBacker_IdAndProject_Id(
-                    currentUserId, projectId);
+            boolean hasBacked = donationRepository.existsByBacker_IdAndProject_IdAndPaymentStatus(
+                    currentUserId, projectId, PaymentStatus.SUCCESS);
             // must be a backer and not yet reviewed
             canReview = hasBacked && !alreadyReviewed;
         }
@@ -85,7 +85,7 @@ public class ProjectReviewServiceImpl implements ProjectReviewService {
 
     @Override
     public Page<ProjectReviewResponse> getReviews(Long projectId, int page, int size,
-                                                   Long currentUserId) {
+                                                  Long currentUserId) {
         if (!projectRepository.existsById(projectId)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Project not found");
         }
@@ -99,8 +99,8 @@ public class ProjectReviewServiceImpl implements ProjectReviewService {
     @Override
     @Transactional
     public ProjectReviewResponse submitReview(Long projectId,
-                                               ProjectReviewRequest request,
-                                               Long reviewerId) {
+                                              ProjectReviewRequest request,
+                                              Long reviewerId) {
         Project project = projectRepository.findById(projectId)
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND, "Project not found"));
@@ -110,8 +110,8 @@ public class ProjectReviewServiceImpl implements ProjectReviewService {
                         HttpStatus.NOT_FOUND, "User not found"));
 
         // Gate: must have at least one successful donation to this project
-        boolean hasBacked = donationRepository.existsByBacker_IdAndProject_Id(
-                reviewerId, projectId);
+        boolean hasBacked = donationRepository.existsByBacker_IdAndProject_IdAndPaymentStatus(
+                reviewerId, projectId, PaymentStatus.SUCCESS);
         if (!hasBacked) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                     "Only backers who supported this project can leave a review");
@@ -142,8 +142,8 @@ public class ProjectReviewServiceImpl implements ProjectReviewService {
     @Override
     @Transactional
     public ProjectReviewResponse updateReview(Long projectId, Long reviewId,
-                                               ProjectReviewRequest request,
-                                               Long reviewerId) {
+                                              ProjectReviewRequest request,
+                                              Long reviewerId) {
         ProjectReview review = findAndAuthorize(projectId, reviewId, reviewerId);
 
         review.setRating(request.getRating());

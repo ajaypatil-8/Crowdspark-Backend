@@ -19,11 +19,11 @@ public interface DonationRepository extends JpaRepository<Donation, Long> {
     // creator/rewardTier in one query so PaymentServiceImpl can pull every field
     // it needs without extra lazy-load round trips.
     @Query("SELECT d FROM Donation d " +
-           "JOIN FETCH d.backer " +
-           "JOIN FETCH d.project p " +
-           "JOIN FETCH p.creator " +
-           "LEFT JOIN FETCH d.rewardTier " +
-           "WHERE d.id = :id")
+            "JOIN FETCH d.backer " +
+            "JOIN FETCH d.project p " +
+            "JOIN FETCH p.creator " +
+            "LEFT JOIN FETCH d.rewardTier " +
+            "WHERE d.id = :id")
     Optional<Donation> findDetailedById(@Param("id") Long id);
 
     List<Donation> findByBacker_IdOrderByCreatedAtDesc(Long backerId);
@@ -43,5 +43,7 @@ public interface DonationRepository extends JpaRepository<Donation, Long> {
     @Query("SELECT COALESCE(SUM(d.amount), 0) FROM Donation d WHERE d.backer.id = :userId AND d.paymentStatus = 'SUCCESS'")
     Double sumSuccessfulByBacker(@Param("userId") Long userId);
 
-    boolean existsByBacker_IdAndProject_Id(Long backerId, Long projectId);
+
+    boolean existsByBacker_IdAndProject_IdAndPaymentStatus(Long backerId, Long projectId,
+                                                           PaymentStatus status);
 }
