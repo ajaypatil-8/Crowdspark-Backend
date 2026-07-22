@@ -38,23 +38,23 @@ public class PushNotificationServiceImpl implements PushNotificationService {
 
         fcmTokenRepository.findByUser_IdAndToken(userId, token)
                 .ifPresentOrElse(
-                    existing -> {
-                        // Refresh lastUsedAt and deviceHint
-                        existing.setLastUsedAt(LocalDateTime.now());
-                        if (deviceHint != null) existing.setDeviceHint(deviceHint);
-                        fcmTokenRepository.save(existing);
-                        log.debug("FCM token refreshed for user={}", userId);
-                    },
-                    () -> {
-                        FcmToken fcm = new FcmToken();
-                        fcm.setUser(user);
-                        fcm.setToken(token);
-                        fcm.setDeviceHint(deviceHint);
-                        fcm.setLastUsedAt(LocalDateTime.now());
-                        fcmTokenRepository.save(fcm);
-                        log.info("FCM token registered for user={} device='{}'",
-                                userId, deviceHint);
-                    }
+                        existing -> {
+                            // Refresh lastUsedAt and deviceHint
+                            existing.setLastUsedAt(LocalDateTime.now());
+                            if (deviceHint != null) existing.setDeviceHint(deviceHint);
+                            fcmTokenRepository.save(existing);
+                            log.debug("FCM token refreshed for user={}", userId);
+                        },
+                        () -> {
+                            FcmToken fcm = new FcmToken();
+                            fcm.setUser(user);
+                            fcm.setToken(token);
+                            fcm.setDeviceHint(deviceHint);
+                            fcm.setLastUsedAt(LocalDateTime.now());
+                            fcmTokenRepository.save(fcm);
+                            log.info("FCM token registered for user={} device='{}'",
+                                    userId, deviceHint);
+                        }
                 );
     }
 
@@ -118,28 +118,35 @@ public class PushNotificationServiceImpl implements PushNotificationService {
     // ── Helpers ───────────────────────────────────────────────────────────
 
     private Message buildMessage(String token, String title, String body,
-                                  String link, String iconUrl) {
-        // Notification visible in the OS tray
+                                 String link, String iconUrl) {
+        // BUG FIX (Feature #22): was `.setImage(iconUrl != null ? iconUrl : "")`.
+        // An explicit empty string is a real (non-null) value sent to FCM's API,
+        // not the same as omitting the field — FCM's image field is validated as
+        // a URL when present, so "" risked the whole send failing, whereas simply
+        // passing iconUrl through (null when not set) omits the field entirely,
+        // which is what "no image" should actually look like. The WebpushNotification
+        // below already got this right by falling back to a real icon path instead
+        // of an empty string; this just makes the two consistent.
         Notification notification = Notification.builder()
                 .setTitle(title)
                 .setBody(body)
-                .setImage(iconUrl != null ? iconUrl : "")
+                .setImage(iconUrl)
                 .build();
 
         // WebpushConfig carries the click_action (link) and icon for web browsers
         WebpushConfig webpushConfig = WebpushConfig.builder()
                 .setNotification(
-                    WebpushNotification.builder()
-                        .setTitle(title)
-                        .setBody(body)
-                        .setIcon(iconUrl != null ? iconUrl : "/icon-192.png")
-                        .setBadge("/badge-72.png")
-                        .build()
+                        WebpushNotification.builder()
+                                .setTitle(title)
+                                .setBody(body)
+                                .setIcon(iconUrl != null ? iconUrl : "/icon-192.png")
+                                .setBadge("/badge-72.png")
+                                .build()
                 )
                 .setFcmOptions(
-                    WebpushFcmOptions.builder()
-                        .setLink(link)
-                        .build()
+                        WebpushFcmOptions.builder()
+                                .setLink(link)
+                                .build()
                 )
                 .build();
 
@@ -150,10 +157,7 @@ public class PushNotificationServiceImpl implements PushNotificationService {
                 .build();
     }
 
-    /**
-     * FCM returns specific error codes for stale tokens.
-     * Delete them so we don't waste quota on dead registrations.
-     */
+
     private void handleFcmError(FirebaseMessagingException e, FcmToken fcmToken) {
         MessagingErrorCode code = e.getMessagingErrorCode();
         if (code == MessagingErrorCode.UNREGISTERED

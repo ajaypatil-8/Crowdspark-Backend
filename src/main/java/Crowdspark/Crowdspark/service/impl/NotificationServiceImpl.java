@@ -10,6 +10,7 @@ import Crowdspark.Crowdspark.entity.User;
 import Crowdspark.Crowdspark.entity.type.NotificationType;
 import Crowdspark.Crowdspark.repository.NotificationRepository;
 import Crowdspark.Crowdspark.service.NotificationService;
+import Crowdspark.Crowdspark.service.PushNotificationService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -26,6 +27,13 @@ import java.time.LocalDateTime;
 public class NotificationServiceImpl implements NotificationService {
 
     private final NotificationRepository notificationRepository;
+    // BUG FIX (Feature #22): sendToUser() in PushNotificationServiceImpl was
+    // fully built (FCM send, stale-token cleanup, etc.) but never actually
+    // called from anywhere — the app could register a browser for push, but
+    // no push was ever sent for any event. Wiring this in below for the two
+    // triggers the feature spec explicitly names: "push on campaign update,
+    // funding milestone".
+    private final PushNotificationService pushNotificationService;
 
     // ── internal helper ───────────────────────────────────────────────────────
     private void save(User recipient, NotificationType type,
@@ -53,13 +61,13 @@ public class NotificationServiceImpl implements NotificationService {
     @Override
     public void notifyCreatorBacked(Project project, User backer, Double amount) {
         save(
-            project.getCreator(),
-            NotificationType.PROJECT_BACKED,
-            "New backer! 🎉",
-            backer.getName() + " (@" + backer.getUsername() + ") backed \""
-                + project.getTitle() + "\" with " + fmt(amount),
-            "/projects/" + project.getId(),
-            project.getId()
+                project.getCreator(),
+                NotificationType.PROJECT_BACKED,
+                "New backer! 🎉",
+                backer.getName() + " (@" + backer.getUsername() + ") backed \""
+                        + project.getTitle() + "\" with " + fmt(amount),
+                "/projects/" + project.getId(),
+                project.getId()
         );
         notifyBackerDonationConfirmed(backer, project, amount);
     }
@@ -68,13 +76,13 @@ public class NotificationServiceImpl implements NotificationService {
     @Override
     public void notifyCreatorGoalReached(Project project) {
         save(
-            project.getCreator(),
-            NotificationType.PROJECT_GOAL_REACHED,
-            "🏆 Goal reached!",
-            "Congratulations! \"" + project.getTitle() + "\" has hit its funding goal of "
-                + fmt(project.getGoalAmount()) + ". The campaign is now closed.",
-            "/dashboard/my-campaigns",
-            project.getId()
+                project.getCreator(),
+                NotificationType.PROJECT_GOAL_REACHED,
+                "🏆 Goal reached!",
+                "Congratulations! \"" + project.getTitle() + "\" has hit its funding goal of "
+                        + fmt(project.getGoalAmount()) + ". The campaign is now closed.",
+                "/dashboard/my-campaigns",
+                project.getId()
         );
     }
 
@@ -82,12 +90,12 @@ public class NotificationServiceImpl implements NotificationService {
     @Override
     public void notifyCreatorProjectApproved(Project project) {
         save(
-            project.getCreator(),
-            NotificationType.PROJECT_APPROVED,
-            "Project approved ✅",
-            "Your project \"" + project.getTitle() + "\" is live and accepting backers!",
-            "/projects/" + project.getId(),
-            project.getId()
+                project.getCreator(),
+                NotificationType.PROJECT_APPROVED,
+                "Project approved ✅",
+                "Your project \"" + project.getTitle() + "\" is live and accepting backers!",
+                "/projects/" + project.getId(),
+                project.getId()
         );
     }
 
@@ -95,12 +103,12 @@ public class NotificationServiceImpl implements NotificationService {
     @Override
     public void notifyCreatorProjectRejected(Project project, String reason) {
         save(
-            project.getCreator(),
-            NotificationType.PROJECT_REJECTED,
-            "Project not approved",
-            "\"" + project.getTitle() + "\" was not approved. Reason: " + reason,
-            "/dashboard/my-campaigns",
-            project.getId()
+                project.getCreator(),
+                NotificationType.PROJECT_REJECTED,
+                "Project not approved",
+                "\"" + project.getTitle() + "\" was not approved. Reason: " + reason,
+                "/dashboard/my-campaigns",
+                project.getId()
         );
     }
 
@@ -108,12 +116,12 @@ public class NotificationServiceImpl implements NotificationService {
     @Override
     public void notifyUserKycApproved(User user) {
         save(
-            user,
-            NotificationType.KYC_APPROVED,
-            "KYC approved ✅",
-            "Your identity verification is complete. You can now launch campaigns!",
-            "/dashboard/create-campaign",
-            user.getId()
+                user,
+                NotificationType.KYC_APPROVED,
+                "KYC approved ✅",
+                "Your identity verification is complete. You can now launch campaigns!",
+                "/dashboard/create-campaign",
+                user.getId()
         );
     }
 
@@ -121,12 +129,12 @@ public class NotificationServiceImpl implements NotificationService {
     @Override
     public void notifyUserKycRejected(User user, String reason) {
         save(
-            user,
-            NotificationType.KYC_REJECTED,
-            "KYC not approved",
-            "Your KYC was not approved. Reason: " + reason + ". Please update and resubmit.",
-            "/dashboard/profile",
-            user.getId()
+                user,
+                NotificationType.KYC_REJECTED,
+                "KYC not approved",
+                "Your KYC was not approved. Reason: " + reason + ". Please update and resubmit.",
+                "/dashboard/profile",
+                user.getId()
         );
     }
 
@@ -134,13 +142,13 @@ public class NotificationServiceImpl implements NotificationService {
     @Override
     public void notifyBackerDonationConfirmed(User backer, Project project, Double amount) {
         save(
-            backer,
-            NotificationType.DONATION_CONFIRMED,
-            "Donation confirmed ✅",
-            "Your contribution of " + fmt(amount) + " to \""
-                + project.getTitle() + "\" is confirmed. Thank you for backing!",
-            "/projects/" + project.getId(),
-            project.getId()
+                backer,
+                NotificationType.DONATION_CONFIRMED,
+                "Donation confirmed ✅",
+                "Your contribution of " + fmt(amount) + " to \""
+                        + project.getTitle() + "\" is confirmed. Thank you for backing!",
+                "/projects/" + project.getId(),
+                project.getId()
         );
     }
 
@@ -150,15 +158,15 @@ public class NotificationServiceImpl implements NotificationService {
     @Override
     public void notifyCreatorCampaignFunded(Project project) {
         save(
-            project.getCreator(),
-            NotificationType.CAMPAIGN_FUNDED,
-            "🎉 Campaign successfully funded!",
-            "\"" + project.getTitle() + "\" has closed and raised "
-                + fmt(project.getCurrentAmount()) + " of its "
-                + fmt(project.getGoalAmount()) + " goal. "
-                + "Funds will be disbursed to you shortly.",
-            "/dashboard/my-campaigns",
-            project.getId()
+                project.getCreator(),
+                NotificationType.CAMPAIGN_FUNDED,
+                "🎉 Campaign successfully funded!",
+                "\"" + project.getTitle() + "\" has closed and raised "
+                        + fmt(project.getCurrentAmount()) + " of its "
+                        + fmt(project.getGoalAmount()) + " goal. "
+                        + "Funds will be disbursed to you shortly.",
+                "/dashboard/my-campaigns",
+                project.getId()
         );
     }
 
@@ -166,15 +174,15 @@ public class NotificationServiceImpl implements NotificationService {
     @Override
     public void notifyCreatorCampaignFailed(Project project) {
         save(
-            project.getCreator(),
-            NotificationType.CAMPAIGN_FAILED,
-            "Campaign ended without reaching goal",
-            "\"" + project.getTitle() + "\" raised "
-                + fmt(project.getCurrentAmount()) + " of its "
-                + fmt(project.getGoalAmount()) + " goal. "
-                + "The campaign has closed and backers will be refunded.",
-            "/dashboard/my-campaigns",
-            project.getId()
+                project.getCreator(),
+                NotificationType.CAMPAIGN_FAILED,
+                "Campaign ended without reaching goal",
+                "\"" + project.getTitle() + "\" raised "
+                        + fmt(project.getCurrentAmount()) + " of its "
+                        + fmt(project.getGoalAmount()) + " goal. "
+                        + "The campaign has closed and backers will be refunded.",
+                "/dashboard/my-campaigns",
+                project.getId()
         );
     }
 
@@ -182,13 +190,13 @@ public class NotificationServiceImpl implements NotificationService {
     @Override
     public void notifyBackerCampaignFunded(User backer, Project project) {
         save(
-            backer,
-            NotificationType.CAMPAIGN_FUNDED,
-            "✅ A project you backed was funded!",
-            "\"" + project.getTitle() + "\" successfully reached its goal of "
-                + fmt(project.getGoalAmount()) + ". Thanks for making it happen!",
-            "/projects/" + project.getId(),
-            project.getId()
+                backer,
+                NotificationType.CAMPAIGN_FUNDED,
+                "✅ A project you backed was funded!",
+                "\"" + project.getTitle() + "\" successfully reached its goal of "
+                        + fmt(project.getGoalAmount()) + ". Thanks for making it happen!",
+                "/projects/" + project.getId(),
+                project.getId()
         );
     }
 
@@ -196,15 +204,15 @@ public class NotificationServiceImpl implements NotificationService {
     @Override
     public void notifyBackerCampaignFailed(User backer, Project project) {
         save(
-            backer,
-            NotificationType.CAMPAIGN_FAILED,
-            "A project you backed didn't reach its goal",
-            "\"" + project.getTitle() + "\" raised "
-                + fmt(project.getCurrentAmount()) + " of its "
-                + fmt(project.getGoalAmount()) + " goal. "
-                + "Your contribution will be fully refunded.",
-            "/dashboard/backed",
-            project.getId()
+                backer,
+                NotificationType.CAMPAIGN_FAILED,
+                "A project you backed didn't reach its goal",
+                "\"" + project.getTitle() + "\" raised "
+                        + fmt(project.getCurrentAmount()) + " of its "
+                        + fmt(project.getGoalAmount()) + " goal. "
+                        + "Your contribution will be fully refunded.",
+                "/dashboard/backed",
+                project.getId()
         );
     }
 
@@ -342,15 +350,15 @@ public class NotificationServiceImpl implements NotificationService {
     @Async
     @Override
     public void notifyBackerCampaignUpdate(User backer, Project project, String updateTitle) {
-        save(
-                backer,
-                NotificationType.CAMPAIGN_UPDATE,
-                "📢 New update from " + project.getTitle(),
-                "The creator posted: \"" + updateTitle + "\". "
-                        + "Check it out on the project page.",
-                "/projects/" + project.getId() + "?tab=updates",
-                project.getId()
-        );
+        String title   = "📢 New update from " + project.getTitle();
+        String message = "The creator posted: \"" + updateTitle + "\". "
+                + "Check it out on the project page.";
+        String link    = "/projects/" + project.getId() + "?tab=updates";
+
+        save(backer, NotificationType.CAMPAIGN_UPDATE, title, message, link, project.getId());
+
+        // BUG FIX (Feature #22) — see field comment above.
+        pushNotificationService.sendToUser(backer, title, message, link, null);
     }
 
     @Async
@@ -400,15 +408,15 @@ public class NotificationServiceImpl implements NotificationService {
     @Async
     public void notifyBackerMilestoneCompleted(User backer, Project project,
                                                String milestoneTitle) {
-        save(
-                backer,
-                NotificationType.MILESTONE_COMPLETED,
-                "🏁 Milestone reached: " + milestoneTitle,
-                "The campaign \"" + project.getTitle() + "\" just completed a milestone: \""
-                        + milestoneTitle + "\". Check the project page for details.",
-                "/projects/" + project.getId(),
-                project.getId()
-        );
+        String title   = "🏁 Milestone reached: " + milestoneTitle;
+        String message = "The campaign \"" + project.getTitle() + "\" just completed a milestone: \""
+                + milestoneTitle + "\". Check the project page for details.";
+        String link    = "/projects/" + project.getId();
+
+        save(backer, NotificationType.MILESTONE_COMPLETED, title, message, link, project.getId());
+
+        // BUG FIX (Feature #22) — see field comment above.
+        pushNotificationService.sendToUser(backer, title, message, link, null);
     }
 
     @Override
