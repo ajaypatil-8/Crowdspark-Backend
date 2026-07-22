@@ -37,14 +37,27 @@ public interface ProjectViewRepository extends JpaRepository<ProjectView, Long> 
         """, nativeQuery = true)
     void incrementViewCount(@Param("projectId") Long projectId);
 
-    /** Upsert: flush today's unique count from Redis */
+    /**
+     * Upsert: flush a given day's unique count from Redis.
+     *
+     * BUG FIX: this previously wrote to CURRENT_DATE instead of the actual
+     * date being flushed. flushUniquesToDb() runs at midnight and flushes
+     * YESTERDAY's HyperLogLog data — but CURRENT_DATE is evaluated by the
+     * database at query time, which by then is already the new day. That
+     * silently created a bogus row for *today* (view_count=0, unique_count=
+     * <yesterday's number>) every single night, while yesterday's real row
+     * (with its correct view_count from actual traffic) permanently kept
+     * unique_count=0. Now the target date is passed explicitly so it always
+     * matches the date the HLL data actually belongs to.
+     */
     @Modifying
     @Query(value = """
         INSERT INTO project_views (project_id, view_date, view_count, unique_count)
-        VALUES (:projectId, CURRENT_DATE, 0, :uniqueCount)
+        VALUES (:projectId, :viewDate, 0, :uniqueCount)
         ON CONFLICT (project_id, view_date)
         DO UPDATE SET unique_count = :uniqueCount
         """, nativeQuery = true)
     void updateUniqueCount(@Param("projectId") Long projectId,
+                           @Param("viewDate") LocalDate viewDate,
                            @Param("uniqueCount") Long uniqueCount);
 }

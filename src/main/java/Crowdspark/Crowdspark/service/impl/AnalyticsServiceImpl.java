@@ -124,14 +124,14 @@ public class AnalyticsServiceImpl implements AnalyticsService {
         // Funding: group SUCCESS donations by date for cumulative chart
         Map<LocalDate, Double> fundingByDate = successDonations.stream()
                 .filter(d -> d.getPaidAt() != null &&
-                             !d.getPaidAt().toLocalDate().isBefore(day30))
+                        !d.getPaidAt().toLocalDate().isBefore(day30))
                 .collect(Collectors.groupingBy(
                         d -> d.getPaidAt().toLocalDate(),
                         Collectors.summingDouble(Donation::getAmount)));
 
         double cumulativeFunding = successDonations.stream()
                 .filter(d -> d.getPaidAt() != null &&
-                             d.getPaidAt().toLocalDate().isBefore(day30))
+                        d.getPaidAt().toLocalDate().isBefore(day30))
                 .mapToDouble(Donation::getAmount).sum();
 
         for (LocalDate date = day30; !date.isAfter(today); date = date.plusDays(1)) {
@@ -191,7 +191,7 @@ public class AnalyticsServiceImpl implements AnalyticsService {
                 Long projectId = Long.parseLong(key.split(":")[2]);
                 Long uniqueCount = redis.opsForHyperLogLog().size(key);
                 if (uniqueCount != null && uniqueCount > 0) {
-                    viewRepository.updateUniqueCount(projectId, uniqueCount);
+                    viewRepository.updateUniqueCount(projectId, yesterday, uniqueCount);
                 }
                 redis.delete(key);
             } catch (Exception e) {
