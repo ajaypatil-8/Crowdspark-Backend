@@ -1,164 +1,33 @@
 package Crowdspark.Crowdspark.service.impl;
 
-import Crowdspark.Crowdspark.dto.CreateDonationRequest;
 import Crowdspark.Crowdspark.dto.DonationResponse;
 import Crowdspark.Crowdspark.entity.Donation;
-import Crowdspark.Crowdspark.entity.Project;
-import Crowdspark.Crowdspark.entity.RewardTier;
-import Crowdspark.Crowdspark.entity.User;
 import Crowdspark.Crowdspark.entity.type.MediaUsage;
-import Crowdspark.Crowdspark.entity.type.PaymentStatus;
-import Crowdspark.Crowdspark.entity.type.ProjectStatus;
 import Crowdspark.Crowdspark.repository.DonationRepository;
-import Crowdspark.Crowdspark.repository.ProjectRepository;
-import Crowdspark.Crowdspark.repository.RewardTierRepository;
-import Crowdspark.Crowdspark.repository.UserRepository;
 import Crowdspark.Crowdspark.service.DonationService;
-import Crowdspark.Crowdspark.service.FundingStreamService;
-import Crowdspark.Crowdspark.service.NotificationService;
 import lombok.RequiredArgsConstructor;
-import org.springframework.cache.annotation.CacheEvict;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.server.ResponseStatusException;
-import Crowdspark.Crowdspark.service.EmailService;
-import java.time.LocalDateTime;
+
 import java.util.List;
 
+// AUDIT FIX (Feature #1): this class used to also implement donate(), which
+// created a SUCCESS donation directly from a client-supplied transactionId
+// with no Razorpay verification at all -- a full payment bypass reachable by
+// any authenticated user. That method, its DonationController endpoint, and
+// its DonationService interface entry have all been removed.
+//
+// Donations are now only ever created/confirmed by PaymentServiceImpl, via:
+//   - createOrder()      -> PENDING donation + real Razorpay order
+//   - verifyAndConfirm()  -> marks SUCCESS only after a verified HMAC signature
+//   - confirmFromWebhook() -> marks SUCCESS from Razorpay's own server callback
+// This class is now read-only history lookups, so it no longer needs
+// ProjectRepository, UserRepository, RewardTierRepository, NotificationService,
+// EmailService, or FundingStreamService -- all of that lived only in donate().
 @Service
 @RequiredArgsConstructor
 public class DonationServiceImpl implements DonationService {
 
-    private final DonationRepository    donationRepository;
-    private final ProjectRepository     projectRepository;
-    private final UserRepository        userRepository;
-    private final RewardTierRepository  rewardTierRepository;
-    private final NotificationService   notificationService;
-    private final EmailService emailService;
-    private final FundingStreamService fundingStreamService; // ← Feature #15 fix
-
-    @Override
-    @Transactional
-    @CacheEvict(value = {"projectDetails", "exploreFeed"}, allEntries = true)
-    public DonationResponse donate(CreateDonationRequest request, Long backerId) {
-
-        // 1. Load backer
-        User backer = userRepository.findById(backerId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
-
-        // 2. Load & validate project
-        Project project = projectRepository.findById(request.getProjectId())
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Project not found"));
-
-        // ── GUARD: creator cannot back their own campaign ─────────────────────
-        if (project.getCreator().getId().equals(backerId)) {
-            throw new ResponseStatusException(
-                    HttpStatus.FORBIDDEN, "You cannot back your own campaign");
-        }
-
-        // ── GUARD: project must be APPROVED ───────────────────────────────────
-        if (project.getStatus() != ProjectStatus.APPROVED) {
-            throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST, "Project is not accepting donations");
-        }
-
-        // ── GUARD: deadline not passed ────────────────────────────────────────
-        if (project.getDeadline().isBefore(LocalDateTime.now())) {
-            throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST, "Project funding deadline has passed");
-        }
-
-        // ── GUARD: cap donation to remaining amount ───────────────────────────
-        double remaining = project.getGoalAmount() - project.getCurrentAmount();
-        if (remaining <= 0) {
-            throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST, "This project has already reached its funding goal");
-        }
-        if (request.getAmount() > remaining) {
-            throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST,
-                    String.format("Amount exceeds remaining goal. Maximum you can contribute is ₹%.0f", remaining));
-        }
-
-        // 3. Optional reward tier validation
-        RewardTier rewardTier = null;
-        if (request.getRewardTierId() != null) {
-            rewardTier = rewardTierRepository.findById(request.getRewardTierId())
-                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Reward tier not found"));
-            if (!rewardTier.getProject().getId().equals(project.getId())) {
-                throw new ResponseStatusException(
-                        HttpStatus.BAD_REQUEST, "Reward tier does not belong to this project");
-            }
-            if (request.getAmount() < rewardTier.getMinimumAmount()) {
-                throw new ResponseStatusException(
-                        HttpStatus.BAD_REQUEST,
-                        "Amount must be at least ₹" + rewardTier.getMinimumAmount() + " for this reward tier");
-            }
-        }
-
-        // 4. Build and save donation
-        Donation donation = new Donation();
-        donation.setBacker(backer);
-        donation.setProject(project);
-        donation.setAmount(request.getAmount());
-        donation.setRewardTier(rewardTier);
-        donation.setPaymentStatus(PaymentStatus.SUCCESS);
-        donation.setTransactionId(request.getTransactionId());
-        donation.setMessage(request.getMessage());
-        donation.setPaidAt(LocalDateTime.now());
-
-        Donation saved = donationRepository.save(donation);
-
-        // 5. Update project.currentAmount
-        double newTotal = project.getCurrentAmount() + request.getAmount();
-        project.setCurrentAmount(newTotal);
-
-        // ── AUTO-CLOSE: goal reached → close campaign ─────────────────────────
-        if (newTotal >= project.getGoalAmount()) {
-            project.setStatus(ProjectStatus.CLOSED);
-            notificationService.notifyCreatorGoalReached(project);
-        }
-
-        projectRepository.save(project);
-
-        // Feature #15 fix: this legacy direct-donate path never broadcast a funding
-        // update — anyone watching the live funding bar via SSE saw nothing change
-        // until they refreshed. PaymentServiceImpl's Razorpay path already does this;
-        // this endpoint produces the exact same kind of SUCCESS donation, so it needs
-        // the same broadcast.
-        fundingStreamService.broadcast(
-                project.getId(),
-                fundingStreamService.buildSnapshot(project.getId())
-        );
-
-        // 6. Update backer stats
-        backer.setTotalProjectsBacked(backer.getTotalProjectsBacked() + 1);
-        backer.setTotalAmountBacked(backer.getTotalAmountBacked() + request.getAmount());
-        userRepository.save(backer);
-
-        // 7. Update creator funds raised
-        User creator = project.getCreator();
-        creator.setTotalFundsRaised(creator.getTotalFundsRaised() + request.getAmount());
-        userRepository.save(creator);
-
-        // 8. Notify creator of new backer
-        notificationService.notifyCreatorBacked(project, backer, request.getAmount());
-
-        emailService.sendBackerReceiptEmail(
-                backer.getEmail(),
-                backer.getName(),
-                project.getTitle(),
-                project.getId(),
-                saved.getId(),
-                saved.getAmount(),
-                saved.getTransactionId(),
-                rewardTier != null ? rewardTier.getTitle() : null,
-                saved.getPaidAt()
-        );
-
-        return toResponse(saved);
-    }
+    private final DonationRepository donationRepository;
 
     @Override
     public List<DonationResponse> getMyDonations(Long backerId) {

@@ -50,8 +50,12 @@ public class EmailServiceImpl implements EmailService {
     @Value("${app.frontend.url:http://localhost:3000}")
     private String frontendUrl;
 
+    // AUDIT FIX: pinned to Locale.ENGLISH for consistency with the same fix in
+    // PdfReceiptServiceImpl — an HTML email can render any script fine, so this
+    // was never a crash risk here, but a receipt should show a predictable
+    // date regardless of the server JVM's default locale.
     private static final DateTimeFormatter RECEIPT_DATE_FORMAT =
-            DateTimeFormatter.ofPattern("d MMMM yyyy, h:mm a");
+            DateTimeFormatter.ofPattern("d MMMM yyyy, h:mm a", Locale.ENGLISH);
 
     // ─────────────────────────────────────────────────────────────────────────
     // OTP — numeric code (creator upgrade / KYC re-verification)

@@ -4,12 +4,15 @@ package Crowdspark.Crowdspark.service.impl;
 import Crowdspark.Crowdspark.dto.DataExportResponse;
 import Crowdspark.Crowdspark.dto.DeleteAccountRequest;
 import Crowdspark.Crowdspark.entity.Donation;
+import Crowdspark.Crowdspark.entity.KycDocument;
 import Crowdspark.Crowdspark.entity.Project;
 import Crowdspark.Crowdspark.entity.User;
 import Crowdspark.Crowdspark.entity.type.AccountStatus;
 import Crowdspark.Crowdspark.entity.type.PaymentStatus;
+import Crowdspark.Crowdspark.entity.type.PayoutStatus;
 import Crowdspark.Crowdspark.entity.type.ProjectStatus;
 import Crowdspark.Crowdspark.repository.*;
+import Crowdspark.Crowdspark.service.CloudinaryService;
 import Crowdspark.Crowdspark.service.EmailService;
 import Crowdspark.Crowdspark.service.GdprService;
 import Crowdspark.Crowdspark.service.RefreshTokenService;
@@ -41,6 +44,20 @@ public class GdprServiceImpl implements GdprService {
     private final RefreshTokenService         refreshTokenService;
     private final EmailService                emailService;
     private final PasswordEncoder             passwordEncoder;
+
+    // AUDIT FIX (Feature #11): these four were never wired in at all. GDPR
+    // deletion (built as Feature #11) simply predates Follow/Reviews/Push
+    // (Features #18/19/22) and was never revisited once those tables existed
+    // — so "erasing" a user left their KYC documents (Aadhaar/PAN numbers and
+    // ID images — some of the most sensitive PII in the whole system),
+    // follow graph, review text, and push-notification tokens completely
+    // untouched.
+    private final KycDocumentRepository       kycDocumentRepository;
+    private final FcmTokenRepository          fcmTokenRepository;
+    private final UserFollowRepository        userFollowRepository;
+    private final ProjectReviewRepository     projectReviewRepository;
+    private final PayoutRepository            payoutRepository;
+    private final CloudinaryService           cloudinaryService;
 
     private static final DateTimeFormatter FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
@@ -79,13 +96,33 @@ public class GdprServiceImpl implements GdprService {
         // below wipes bank/UPI details, and payout (Feature #3) has no fallback
         // if the creator is gone by the time the campaign is FUNDED — the project
         // would keep collecting donations with nowhere valid to send the payout.
+        //
+        // AUDIT FIX (Feature #3/#11): this used to check ONLY for APPROVED
+        // (still-fundraising) projects. A project that had already reached
+        // FUNDED but whose payout admin hadn't triggered yet slipped straight
+        // through this guard — the very scenario the comment above is
+        // describing — and Step 9 would then wipe upiId/bankName/
+        // maskedBankAccount/bankIfscCode anyway, permanently stranding a
+        // successful campaign's payout with no way to ever complete it (the
+        // project isn't FAILED, so it isn't refund-eligible either). Now also
+        // blocked whenever a FUNDED project doesn't yet have a COMPLETED payout.
         List<Project> userProjects = projectRepository.findByCreatorOrderByCreatedAtDesc(user);
         boolean hasLiveCampaign = userProjects.stream()
                 .anyMatch(p -> p.getStatus() == ProjectStatus.APPROVED);
+        boolean hasUnpaidFundedCampaign = userProjects.stream()
+                .filter(p -> p.getStatus() == ProjectStatus.FUNDED)
+                .anyMatch(p -> payoutRepository.findByProject_Id(p.getId())
+                        .map(payout -> payout.getStatus() != PayoutStatus.COMPLETED)
+                        .orElse(true));
         if (hasLiveCampaign) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "You have an active campaign that is still raising funds. " +
                     "Please wait until it's funded or closed, or contact support@crowdspark.in.");
+        }
+        if (hasUnpaidFundedCampaign) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "You have a successfully funded campaign that hasn't been paid out yet. " +
+                    "Please wait until your payout is completed, or contact support@crowdspark.in.");
         }
 
         log.info("GDPR account deletion initiated for userId={}", userId);
@@ -112,9 +149,9 @@ public class GdprServiceImpl implements GdprService {
         log.info("Cancelled {} pending donations for userId={}", pendingDonations.size(), userId);
 
         // ── Step 3: Handle projects created by this user ──────────────────────
-        // (userProjects already fetched above; the APPROVED/live case is blocked
-        // before we ever get here, so only PENDING/DRAFT/FUNDED/FAILED/REJECTED
-        // can appear in this loop)
+        // (userProjects already fetched above; the APPROVED/live and
+        // unpaid-FUNDED cases are both blocked before we ever get here, so only
+        // PENDING/DRAFT/FAILED/REJECTED/paid-FUNDED can appear in this loop)
         for (Project project : userProjects) {
             if (project.getStatus() == ProjectStatus.PENDING
                     || project.getStatus() == ProjectStatus.DRAFT) {
@@ -123,7 +160,7 @@ public class GdprServiceImpl implements GdprService {
                 project.setRejectionReason("Creator account deleted");
                 projectRepository.save(project);
             }
-            // FUNDED / FAILED / REJECTED projects: keep visible with anonymous creator
+            // FUNDED (already paid out) / FAILED / REJECTED projects: keep visible with anonymous creator
         }
         log.info("Processed {} projects for userId={}", userProjects.size(), userId);
 
@@ -149,6 +186,34 @@ public class GdprServiceImpl implements GdprService {
 
         // ── Step 7: Delete notifications ─────────────────────────────────────
         notificationRepository.deleteAllByRecipientId(userId);
+
+        // ── Step 7b (AUDIT FIX, Feature #11/#22): stop push notifications ──────
+        // Without this, a "deleted" user's device could keep receiving pushes
+        // indefinitely — the account row still exists (anonymised, not
+        // dropped), so anything that targets a user by ID still resolves.
+        fcmTokenRepository.deleteAllByUserId(userId);
+
+        // ── Step 7c (AUDIT FIX, Feature #11/#18): erase the follow graph ───────
+        userFollowRepository.deleteAllInvolvingUser(userId);
+
+        // ── Step 7d (AUDIT FIX, Feature #11/#19): anonymise review text ────────
+        // Keep the row (and star rating) so a project's rating/review count
+        // stays accurate, same as comments — but the free-text content is
+        // this user's own words and gets wiped like everything else here.
+        projectReviewRepository.findByReviewer_Id(userId).forEach(review -> {
+            review.setTitle(null);
+            review.setContent("[deleted]");
+            projectReviewRepository.save(review);
+        });
+
+        // ── Step 7e (AUDIT FIX, Feature #11): erase KYC documents ──────────────
+        // This is the most sensitive PII in the system — Aadhaar/PAN numbers
+        // and the actual ID images — so it gets a real delete, including the
+        // images on Cloudinary itself, not just an anonymised DB row.
+        kycDocumentRepository.findByUserId(userId).ifPresent(kyc -> {
+            deleteKycCloudinaryAssets(kyc);
+            kycDocumentRepository.delete(kyc);
+        });
 
         // ── Step 8: Send final confirmation email BEFORE wiping email ─────────
         String userEmail = user.getEmail();
@@ -216,6 +281,26 @@ public class GdprServiceImpl implements GdprService {
 
         userRepository.save(user);
         log.info("GDPR account deletion COMPLETED for userId={} → anonymised as '{}'", userId, anon);
+    }
+
+    /** Best-effort cleanup of a KYC document's images on Cloudinary — deleting
+     *  the local DB row is not enough on its own to actually erase this PII. */
+    private void deleteKycCloudinaryAssets(KycDocument kyc) {
+        deletePublicIdQuietly(kyc.getPanCardImagePublicId());
+        deletePublicIdQuietly(kyc.getAadhaarFrontPublicId());
+        deletePublicIdQuietly(kyc.getAadhaarBackPublicId());
+    }
+
+    private void deletePublicIdQuietly(String publicId) {
+        if (publicId == null || publicId.isBlank()) return;
+        try {
+            cloudinaryService.deleteFile(publicId);
+        } catch (Exception e) {
+            // Don't let a Cloudinary hiccup block the rest of account deletion —
+            // log it so it can be cleaned up manually if it ever happens.
+            log.warn("Could not delete Cloudinary asset {} during account deletion: {}",
+                    publicId, e.getMessage());
+        }
     }
 
     // ─────────────────────────────────────────────────────────────────────────

@@ -32,7 +32,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -219,8 +218,12 @@ public class ProjectServiceImpl implements ProjectService {
             // ── FTS path: keyword present → use PostgreSQL full-text search ──
             // No sort-based Pageable needed — ORDER BY is in the native query
             Pageable pageable = PageRequest.of(request.getPage(), request.getSize());
+            // AUDIT FIX (Feature #16): escape SQL LIKE wildcard characters so a
+            // search for e.g. "50%" or "a_b" matches those literal characters
+            // instead of "%" / "_" being interpreted as LIKE wildcards.
             projects = projectRepository.searchWithFts(
-                    request.getCategoryId(), keyword, sort, pageable);
+                    request.getCategoryId(), escapeLikeWildcards(keyword), sort,
+                    request.getMinGoal(), request.getMaxGoal(), pageable);
 
         } else {
             // ── Browse path: no keyword → use fast JPQL + in-DB sorting ──────
@@ -234,26 +237,27 @@ public class ProjectServiceImpl implements ProjectService {
             };
             Pageable pageable = PageRequest.of(request.getPage(), request.getSize(), springSort);
             projects = projectRepository.findForExplore(
-                    request.getCategoryId(), null, pageable);
+                    request.getCategoryId(), null,
+                    request.getMinGoal(), request.getMaxGoal(), pageable);
         }
 
-        // ── Optional in-memory goal range filter ─────────────────────────────
-        // Applied after DB query (goal range filtering is rare and low overhead
-        // for typical page sizes of 12)
-        if (request.getMinGoal() != null || request.getMaxGoal() != null) {
-            List<Project> filtered = projects.getContent().stream()
-                    .filter(p -> {
-                        if (request.getMinGoal() != null && p.getGoalAmount() < request.getMinGoal())
-                            return false;
-                        if (request.getMaxGoal() != null && p.getGoalAmount() > request.getMaxGoal())
-                            return false;
-                        return true;
-                    }).toList();
-
-            projects = new PageImpl<>(filtered, projects.getPageable(), filtered.size());
-        }
-
+        // AUDIT FIX (Feature #16): minGoal/maxGoal used to be filtered here, in
+        // Java, AFTER the query above had already paginated — which meant
+        // Page's totalElements/totalPages reflected only what survived
+        // filtering on the one page already fetched (silently under-reporting
+        // how many matching projects exist, and never even considering
+        // matches sitting on further pages). Both queries now filter on goal
+        // range themselves, so `projects` is already correct as-is — no
+        // further filtering needed here.
         return projects.map(this::toFeedResponse);
+    }
+
+    /** Escapes %, _, and \ so they're treated as literal characters in a SQL LIKE pattern. */
+    private String escapeLikeWildcards(String input) {
+        return input
+                .replace("\\", "\\\\")
+                .replace("%", "\\%")
+                .replace("_", "\\_");
     }
 
     // ── Cache eviction ────────────────────────────────────────────────────────

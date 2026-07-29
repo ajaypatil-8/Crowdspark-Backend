@@ -60,6 +60,13 @@ class PaymentServiceImplTest {
     private Project project;
 
     private static final String TEST_KEY_SECRET = "stubsecretkey12345678901234";
+    // AUDIT FIX: matches TestDataFactory.successfulDonation()/pendingDonation()'s
+    // hardcoded razorpayOrderId — tests exercising the legitimate/success path
+    // now use this same order ID, since verifyAndConfirm's new order-ID check
+    // (see verifyAndConfirm_throws400_whenOrderIdDoesNotMatchDonation below)
+    // requires the request's orderId to match what's actually stored on the
+    // donation, which a real, non-attack checkout flow always satisfies.
+    private static final String DONATION_ORDER_ID = "order_testOrderId123";
 
     @BeforeEach
     void setUp() {
@@ -138,6 +145,38 @@ class PaymentServiceImplTest {
                 .hasMessageContaining("exceeds remaining goal");
     }
 
+    // ─── verifyAndConfirm — order/donation binding (AUDIT FIX, Feature #1/#2) ──
+
+    @Test
+    @DisplayName("verifyAndConfirm throws 400 when the request's orderId doesn't match the donation's stored orderId")
+    void verifyAndConfirm_throws400_whenOrderIdDoesNotMatchDonation() throws Exception {
+        // This is the exact scenario the fix closes: donation was created for
+        // DONATION_ORDER_ID, but the request presents a GENUINELY VALID
+        // signature — just for a different order the caller separately, and
+        // legitimately, paid for. Before the fix, a valid signature alone was
+        // enough to mark ANY donation SUCCESS regardless of which order it was
+        // actually for.
+        Donation donation = TestDataFactory.pendingDonation(backer, project);
+        given(donationRepository.findById(donation.getId())).willReturn(Optional.of(donation));
+
+        String wrongOrderId = "order_aDifferentOrderTheCallerActuallyPaidFor";
+        String paymentId    = "pay_xyz789";
+        String validSigForWrongOrder = generateHmac(wrongOrderId + "|" + paymentId, TEST_KEY_SECRET);
+
+        PaymentVerifyRequest req = new PaymentVerifyRequest();
+        req.setDonationId(donation.getId());
+        req.setRazorpayOrderId(wrongOrderId);
+        req.setRazorpayPaymentId(paymentId);
+        req.setRazorpaySignature(validSigForWrongOrder);
+
+        assertThatThrownBy(() -> paymentService.verifyAndConfirm(req, backer.getId()))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("does not match the order");
+
+        // Must never be marked SUCCESS off the back of a signature for a different order
+        verify(donationRepository, never()).save(argThat(d -> d.getPaymentStatus() == PaymentStatus.SUCCESS));
+    }
+
     // ─── verifyAndConfirm — HMAC signature ───────────────────────────────────
 
     @Test
@@ -148,7 +187,7 @@ class PaymentServiceImplTest {
 
         PaymentVerifyRequest req = new PaymentVerifyRequest();
         req.setDonationId(100L);
-        req.setRazorpayOrderId("order_abc123");
+        req.setRazorpayOrderId(DONATION_ORDER_ID);
         req.setRazorpayPaymentId("pay_xyz789");
         req.setRazorpaySignature("invalid_signature_that_wont_match");
 
@@ -169,13 +208,12 @@ class PaymentServiceImplTest {
         given(projectRepository.save(any())).willAnswer(inv -> inv.getArgument(0));
         given(userRepository.save(any())).willAnswer(inv -> inv.getArgument(0));
 
-        String orderId   = "order_abc123";
         String paymentId = "pay_xyz789";
-        String validSig  = generateHmac(orderId + "|" + paymentId, TEST_KEY_SECRET);
+        String validSig  = generateHmac(DONATION_ORDER_ID + "|" + paymentId, TEST_KEY_SECRET);
 
         PaymentVerifyRequest req = new PaymentVerifyRequest();
         req.setDonationId(donation.getId());
-        req.setRazorpayOrderId(orderId);
+        req.setRazorpayOrderId(DONATION_ORDER_ID);
         req.setRazorpayPaymentId(paymentId);
         req.setRazorpaySignature(validSig);
 
@@ -193,6 +231,39 @@ class PaymentServiceImplTest {
     }
 
     @Test
+    @DisplayName("verifyAndConfirm sets project status to FUNDED (not CLOSED) when the goal is reached")
+    void verifyAndConfirm_setsProjectFunded_whenGoalReached() throws Exception {
+        // goalAmount=100k, currentAmount=25k (TestDataFactory.approvedProject) —
+        // a donation of 75k exactly reaches the goal.
+        //
+        // AUDIT FIX (Feature #2/#3) regression guard: a campaign that reaches
+        // its goal must become FUNDED (payout-eligible). It used to become
+        // CLOSED instead — a status neither the deadline scheduler nor
+        // PayoutServiceImpl would ever pick back up, permanently stranding the
+        // payout for any campaign that succeeded before its deadline.
+        Donation donation = TestDataFactory.pendingDonation(backer, project);
+        donation.setAmount(75_000.0);
+        given(donationRepository.findById(donation.getId())).willReturn(Optional.of(donation));
+        given(donationRepository.save(any())).willAnswer(inv -> inv.getArgument(0));
+        given(projectRepository.save(any())).willAnswer(inv -> inv.getArgument(0));
+        given(userRepository.save(any())).willAnswer(inv -> inv.getArgument(0));
+
+        String paymentId = "pay_goalReached";
+        String validSig  = generateHmac(DONATION_ORDER_ID + "|" + paymentId, TEST_KEY_SECRET);
+
+        PaymentVerifyRequest req = new PaymentVerifyRequest();
+        req.setDonationId(donation.getId());
+        req.setRazorpayOrderId(DONATION_ORDER_ID);
+        req.setRazorpayPaymentId(paymentId);
+        req.setRazorpaySignature(validSig);
+
+        paymentService.verifyAndConfirm(req, backer.getId());
+
+        verify(projectRepository).save(argThat(p -> p.getStatus() == ProjectStatus.FUNDED));
+        verify(notificationService).notifyCreatorGoalReached(any());
+    }
+
+    @Test
     @DisplayName("verifyAndConfirm throws 403 when donation belongs to different user")
     void verifyAndConfirm_throws403_whenDonationBelongsToDifferentUser() {
         Donation donation = TestDataFactory.pendingDonation(backer, project);
@@ -200,7 +271,7 @@ class PaymentServiceImplTest {
 
         PaymentVerifyRequest req = new PaymentVerifyRequest();
         req.setDonationId(donation.getId());
-        req.setRazorpayOrderId("order_abc");
+        req.setRazorpayOrderId(DONATION_ORDER_ID);
         req.setRazorpayPaymentId("pay_xyz");
         req.setRazorpaySignature("sig");
 
@@ -218,7 +289,7 @@ class PaymentServiceImplTest {
 
         PaymentVerifyRequest req = new PaymentVerifyRequest();
         req.setDonationId(donation.getId());
-        req.setRazorpayOrderId("order_abc");
+        req.setRazorpayOrderId(DONATION_ORDER_ID);
         req.setRazorpayPaymentId("pay_xyz");
         req.setRazorpaySignature("any");
 
@@ -241,13 +312,12 @@ class PaymentServiceImplTest {
         given(projectRepository.save(any())).willAnswer(inv -> inv.getArgument(0));
         given(userRepository.save(any())).willAnswer(inv -> inv.getArgument(0));
 
-        String orderId   = "order_abc123";
         String paymentId = "pay_xyz789";
-        String validSig  = generateHmac(orderId + "|" + paymentId, TEST_KEY_SECRET);
+        String validSig   = generateHmac(DONATION_ORDER_ID + "|" + paymentId, TEST_KEY_SECRET);
 
         PaymentVerifyRequest req = new PaymentVerifyRequest();
         req.setDonationId(donation.getId());
-        req.setRazorpayOrderId(orderId);
+        req.setRazorpayOrderId(DONATION_ORDER_ID);
         req.setRazorpayPaymentId(paymentId);
         req.setRazorpaySignature(validSig);
 
@@ -264,6 +334,57 @@ class PaymentServiceImplTest {
                 any(),
                 any()
         );
+    }
+
+    // ─── confirmFromWebhook (AUDIT FIX, Feature #4) ──────────────────────────
+
+    @Test
+    @DisplayName("confirmFromWebhook confirms the matching donation for a valid payment.captured event")
+    void confirmFromWebhook_confirmsDonation_forValidCapturedEvent() throws Exception {
+        String webhookSecret = "stub-webhook-secret";
+        ReflectionTestUtils.setField(paymentService, "razorpayWebhookSecret", webhookSecret);
+
+        Donation donation = TestDataFactory.pendingDonation(backer, project);
+        given(donationRepository.findByRazorpayOrderId(DONATION_ORDER_ID))
+                .willReturn(Optional.of(donation));
+        given(donationRepository.save(any())).willAnswer(inv -> inv.getArgument(0));
+        given(projectRepository.save(any())).willAnswer(inv -> inv.getArgument(0));
+        given(userRepository.save(any())).willAnswer(inv -> inv.getArgument(0));
+
+        String body = ("{\"event\":\"payment.captured\",\"payload\":{\"payment\":{\"entity\":{"
+                + "\"id\":\"pay_webhookTest\",\"order_id\":\"" + DONATION_ORDER_ID + "\"}}}}");
+        String signature = generateHmac(body, webhookSecret);
+
+        paymentService.confirmFromWebhook(body, signature);
+
+        verify(donationRepository).save(argThat(d -> d.getPaymentStatus() == PaymentStatus.SUCCESS));
+    }
+
+    @Test
+    @DisplayName("confirmFromWebhook rejects a call whose signature doesn't match")
+    void confirmFromWebhook_throws400_whenSignatureInvalid() {
+        ReflectionTestUtils.setField(paymentService, "razorpayWebhookSecret", "stub-webhook-secret");
+        String body = "{\"event\":\"payment.captured\",\"payload\":{}}";
+
+        assertThatThrownBy(() -> paymentService.confirmFromWebhook(body, "not-a-real-signature"))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("Invalid webhook signature");
+
+        verify(donationRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("confirmFromWebhook ignores event types other than payment.captured")
+    void confirmFromWebhook_ignoresNonCapturedEvents() throws Exception {
+        String webhookSecret = "stub-webhook-secret";
+        ReflectionTestUtils.setField(paymentService, "razorpayWebhookSecret", webhookSecret);
+
+        String body = "{\"event\":\"payment.failed\",\"payload\":{}}";
+        String signature = generateHmac(body, webhookSecret);
+
+        paymentService.confirmFromWebhook(body, signature);
+
+        verifyNoInteractions(donationRepository);
     }
 
     // ─── getReceiptPdf (FIX #10) ──────────────────────────────────────────────

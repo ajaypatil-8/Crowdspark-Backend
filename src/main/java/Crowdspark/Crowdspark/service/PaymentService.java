@@ -16,11 +16,25 @@ public interface PaymentService {
     PaymentOrderResponse createOrder(PaymentOrderRequest request, Long backerId);
 
     /**
-     * Step 2 — Verify Razorpay HMAC signature.
+     * Step 2 — Verify Razorpay HMAC signature (client-driven, called by the
+     * frontend right after checkout.js reports success).
      * On success: marks donation as SUCCESS, updates project.currentAmount,
      * updates backer/creator stats, and fires notifications.
      */
     DonationResponse verifyAndConfirm(PaymentVerifyRequest request, Long backerId);
+
+    /**
+     * AUDIT FIX (Feature #4) — server-to-server confirmation from Razorpay's
+     * own webhook, independent of whether the browser ever calls
+     * verifyAndConfirm(). Verifies the webhook's own HMAC signature (over the
+     * raw request body, using razorpay.webhook-secret — NOT the same secret
+     * or payload as verifyAndConfirm()'s signature check), then applies the
+     * same "mark this donation paid" logic if the event is payment.captured.
+     *
+     * @param rawBody          the exact, unmodified request body Razorpay sent
+     * @param webhookSignature the value of the X-Razorpay-Signature header
+     */
+    void confirmFromWebhook(String rawBody, String webhookSignature);
 
     /**
      * FIX #10 — on-demand receipt download.

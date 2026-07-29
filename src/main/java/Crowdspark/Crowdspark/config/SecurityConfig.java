@@ -41,7 +41,12 @@ public class SecurityConfig {
     private static final Set<String> CSRF_EXEMPT_PATHS = Set.of(
             "/auth/register", "/auth/login", "/auth/refresh",
             "/auth/verify-email", "/auth/reset-password", "/auth/forgot-password",
-            "/auth/totp/verify-login"
+            "/auth/totp/verify-login",
+            // AUDIT FIX (Feature #4): Razorpay's servers call this directly and
+            // can never carry a CSRF token or session cookie — it's
+            // authenticated via X-Razorpay-Signature instead (see
+            // PaymentServiceImpl.verifyWebhookSignature).
+            "/api/v1/payment/webhook"
     );
 
     // FIX #14: CSRF only matters for requests a browser attaches credentials to
@@ -196,6 +201,12 @@ public class SecurityConfig {
                                 "/api/v1/projects/create",
                                 "/api/v1/projects/creator/**"
                         ).hasRole("CREATOR")
+
+                        // AUDIT FIX (Feature #4): Razorpay's server calls this directly —
+                        // it will never have our JWT, only its own X-Razorpay-Signature.
+                        // Must come before the broader /api/v1/payment/** rule below
+                        // since Spring Security uses first-match-wins.
+                        .requestMatchers(HttpMethod.POST, "/api/v1/payment/webhook").permitAll()
 
                         // Authenticated user areas
                         .requestMatchers("/api/v1/backer/**").authenticated()

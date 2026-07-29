@@ -66,6 +66,36 @@ public class PaymentController {
         return ResponseEntity.ok(ApiResponse.ok("Payment confirmed successfully", response));
     }
 
+    // AUDIT FIX (Feature #4): server-to-server webhook, called directly by
+    // Razorpay's own servers — not by our frontend, and never carries a
+    // Bearer token. It is authenticated entirely via the X-Razorpay-Signature
+    // header (see PaymentServiceImpl.verifyWebhookSignature), so it's left
+    // public in SecurityConfig (permitAll, and CSRF-exempt — see
+    // CSRF_EXEMPT_PATHS there) rather than behind @PreAuthorize.
+    //
+    // Register this URL in the Razorpay Dashboard -> Settings -> Webhooks,
+    // subscribed to "payment.captured", and put the secret Razorpay gives you
+    // there into razorpay.webhook-secret.
+    //
+    // IMPORTANT: the request body is captured as a raw String on purpose.
+    // Razorpay signs the exact bytes it sent; if this were instead bound to a
+    // parsed/re-serialized DTO, the signature could never match.
+    @Operation(summary = "Razorpay webhook (server-to-server)",
+            description = "Called directly by Razorpay when a payment is captured. Reconciles donations " +
+                    "that reached PENDING but whose client never called /verify (e.g. the browser tab " +
+                    "closed right after a successful charge).")
+    @PostMapping("/webhook")
+    public ResponseEntity<String> webhook(
+            @RequestBody String rawBody,
+            @RequestHeader(value = "X-Razorpay-Signature", required = false) String signature
+    ) {
+        paymentService.confirmFromWebhook(rawBody, signature);
+        // Always 200 on anything we accepted-but-ignored (wrong event type,
+        // donation not found yet, etc.) so Razorpay doesn't endlessly retry —
+        // confirmFromWebhook only throws for an actually bad/missing signature.
+        return ResponseEntity.ok("ok");
+    }
+
     // FIX #10: this endpoint didn't exist — "expose download endpoint" was never done.
     @PreAuthorize("isAuthenticated()")
     @Operation(summary = "Download payment receipt",

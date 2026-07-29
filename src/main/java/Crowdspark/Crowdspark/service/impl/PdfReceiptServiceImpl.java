@@ -39,7 +39,15 @@ public class PdfReceiptServiceImpl implements PdfReceiptService {
     private static final Color LINE_LIGHT = new Color(228, 228, 231);
     private static final Color ACCENT     = new Color(255, 92, 0);
 
-    private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ofPattern("d MMMM yyyy, h:mm a");
+    // AUDIT FIX: this had no explicit Locale, unlike formatInr() below which
+    // deliberately pins Locale.of("en","IN") for exactly this reason — if the
+    // JVM's default locale is ever anything other than English, "MMMM" here
+    // would render the month name in that locale's script (e.g. Devanagari),
+    // and PDFBox's standard fonts can only encode WinAnsiEncoding (Latin-1)
+    // characters — the same class of crash sanitizeForPdf() below exists to
+    // prevent for names/titles, just via a different field that was missed.
+    private static final DateTimeFormatter DATE_FORMAT =
+            DateTimeFormatter.ofPattern("d MMMM yyyy, h:mm a", Locale.ENGLISH);
 
     @Override
     public byte[] generateReceiptPdf(Long donationId, String backerName, String projectTitle, Double amount,

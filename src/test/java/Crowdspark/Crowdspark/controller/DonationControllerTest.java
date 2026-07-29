@@ -1,9 +1,19 @@
 // src/test/java/Crowdspark/Crowdspark/controller/DonationControllerTest.java
 // Feature #13: "MockMvc tests for key endpoints" — Auth/Payment/Project controllers
 // already had one each; DonationController had none.
+//
+// AUDIT FIX (Feature #1): the three tests that used to live here
+// (donate_returns201_withValidPayload, donate_returns400_whenProjectIdMissing,
+// donate_returns400_whenAmountBelowMinimum) covered POST /api/v1/donations,
+// which called DonationServiceImpl.donate() — the endpoint that let a caller
+// mark a donation SUCCESS directly from a client-supplied transactionId with
+// no Razorpay verification at all. That endpoint (and the donate() method
+// itself) has been removed entirely; see DonationController's class comment.
+// The equivalent coverage for "does a donation actually need a real,
+// verified payment" now lives in PaymentServiceImplTest (verifyAndConfirm's
+// signature and order-ID checks).
 package Crowdspark.Crowdspark.controller;
 
-import Crowdspark.Crowdspark.dto.CreateDonationRequest;
 import Crowdspark.Crowdspark.dto.DonationResponse;
 import Crowdspark.Crowdspark.security.JwtAuthenticationFilter;
 import Crowdspark.Crowdspark.service.DonationService;
@@ -16,7 +26,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.security.servlet.SecurityAutoConfiguration;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
-import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.LocalDateTime;
@@ -24,10 +33,8 @@ import java.util.List;
 
 import static org.hamcrest.Matchers.hasSize;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.BDDMockito.given;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @WebMvcTest(
@@ -57,56 +64,6 @@ class DonationControllerTest {
                 .createdAt(LocalDateTime.now())
                 .paidAt(LocalDateTime.now())
                 .build();
-    }
-
-    // ─── POST /api/v1/donations ───────────────────────────────────────────────
-
-    @Test
-    @DisplayName("POST /api/v1/donations → 201 with the created donation")
-    void donate_returns201_withValidPayload() throws Exception {
-        given(userService.getByUsername(any())).willReturn(TestDataFactory.backerUser());
-        given(donationService.donate(any(), anyLong())).willReturn(sampleResponse());
-
-        CreateDonationRequest body = new CreateDonationRequest();
-        body.setProjectId(10L);
-        body.setAmount(5_000.0);
-        body.setTransactionId("pay_test123");
-
-        mockMvc.perform(post("/api/v1/donations")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(body))
-                        .principal(() -> "testbacker"))
-                .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.data.id").value(500))
-                .andExpect(jsonPath("$.data.amount").value(5000.0))
-                .andExpect(jsonPath("$.data.paymentStatus").value("SUCCESS"));
-    }
-
-    @Test
-    @DisplayName("POST /api/v1/donations → 400 when projectId is missing")
-    void donate_returns400_whenProjectIdMissing() throws Exception {
-        CreateDonationRequest body = new CreateDonationRequest();
-        body.setAmount(5_000.0);
-
-        mockMvc.perform(post("/api/v1/donations")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(body))
-                        .principal(() -> "testbacker"))
-                .andExpect(status().isBadRequest());
-    }
-
-    @Test
-    @DisplayName("POST /api/v1/donations → 400 when amount is below the minimum")
-    void donate_returns400_whenAmountBelowMinimum() throws Exception {
-        CreateDonationRequest body = new CreateDonationRequest();
-        body.setProjectId(10L);
-        body.setAmount(0.0);
-
-        mockMvc.perform(post("/api/v1/donations")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(body))
-                        .principal(() -> "testbacker"))
-                .andExpect(status().isBadRequest());
     }
 
     // ─── GET /api/v1/donations/my ─────────────────────────────────────────────
@@ -149,6 +106,4 @@ class DonationControllerTest {
                 .andExpect(jsonPath("$.data", hasSize(1)))
                 .andExpect(jsonPath("$.data[0].backerUsername").value("testbacker"));
     }
-
-
 }

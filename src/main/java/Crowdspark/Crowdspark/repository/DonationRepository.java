@@ -46,4 +46,18 @@ public interface DonationRepository extends JpaRepository<Donation, Long> {
 
     boolean existsByBacker_IdAndProject_IdAndPaymentStatus(Long backerId, Long projectId,
                                                            PaymentStatus status);
+
+    // AUDIT FIX (Feature #18): backs FollowServiceImpl's followed-feed
+    // CreatorDto, which previously hardcoded totalBackers to 0 instead of
+    // computing it. Batched by creator ID (rather than one query per project)
+    // for the same N+1 reasons as the other AUDIT FIX batched queries.
+    @Query("SELECT d.project.creator.id, COUNT(DISTINCT d.backer.id) FROM Donation d " +
+           "WHERE d.project.creator.id IN :creatorIds AND d.paymentStatus = 'SUCCESS' " +
+           "GROUP BY d.project.creator.id")
+    List<Object[]> countDistinctBackersByCreatorIds(@Param("creatorIds") List<Long> creatorIds);
+
+    // AUDIT FIX (Feature #1/#4): the Razorpay webhook only knows Razorpay's own
+    // order_id (it has no idea what our internal donation ID is), so the webhook
+    // handler needs to look the donation up by that instead.
+    Optional<Donation> findByRazorpayOrderId(String razorpayOrderId);
 }

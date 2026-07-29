@@ -18,6 +18,11 @@ public interface ProjectReviewRepository extends JpaRepository<ProjectReview, Lo
 
     Optional<ProjectReview> findByProject_IdAndReviewer_Id(Long projectId, Long reviewerId);
 
+    // AUDIT FIX (Feature #11/#19): needed by GDPR account deletion, which
+    // previously never touched this table — a "deleted" user's review text
+    // stayed fully attached to their (now anonymised) account forever.
+    List<ProjectReview> findByReviewer_Id(Long reviewerId);
+
     boolean existsByProject_IdAndReviewer_Id(Long projectId, Long reviewerId);
 
     long countByProject_Id(Long projectId);

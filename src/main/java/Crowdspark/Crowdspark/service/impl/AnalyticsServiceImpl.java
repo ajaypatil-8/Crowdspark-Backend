@@ -10,6 +10,10 @@ import Crowdspark.Crowdspark.repository.*;
 import Crowdspark.Crowdspark.service.AnalyticsService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.redis.connection.RedisConnection;
+import org.springframework.data.redis.core.Cursor;
+import org.springframework.data.redis.core.RedisCallback;
+import org.springframework.data.redis.core.ScanOptions;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.HttpStatus;
 import org.springframework.scheduling.annotation.Async;
@@ -18,6 +22,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -183,8 +188,15 @@ public class AnalyticsServiceImpl implements AnalyticsService {
 
         // Get all project IDs that have an HLL key for yesterday
         String pattern = "hll:views:*:" + yesterday.format(DATE_FMT);
-        var keys = redis.keys(pattern);
-        if (keys == null || keys.isEmpty()) return;
+        // AUDIT FIX (Feature #17): this used to be `redis.keys(pattern)`. KEYS
+        // is a documented Redis anti-pattern — it's O(N) over the ENTIRE
+        // keyspace and blocks Redis's single-threaded event loop for the
+        // whole scan, which starts to hurt production traffic once the
+        // keyspace is more than a small dev-sized one. SCAN does the same
+        // matching but walks the keyspace in small cursor-based batches
+        // instead of one blocking pass.
+        List<String> keys = scanKeys(pattern);
+        if (keys.isEmpty()) return;
 
         for (String key : keys) {
             try {
@@ -205,5 +217,24 @@ public class AnalyticsServiceImpl implements AnalyticsService {
 
     private String hllKey(Long projectId, LocalDate date) {
         return "hll:views:" + projectId + ":" + date.format(DATE_FMT);
+    }
+
+    /**
+     * AUDIT FIX (Feature #17): non-blocking replacement for `redis.keys(pattern)`.
+     * Walks the keyspace in small batches via a server-side cursor instead of
+     * one large blocking pass, so it doesn't stall other Redis traffic
+     * (rate limiting, caching, etc.) while it runs.
+     */
+    private List<String> scanKeys(String pattern) {
+        List<String> result = new ArrayList<>();
+        ScanOptions options = ScanOptions.scanOptions().match(pattern).count(500).build();
+        try (Cursor<byte[]> cursor = redis.execute(
+                (RedisCallback<Cursor<byte[]>>) (RedisConnection connection) -> connection.scan(options))) {
+            if (cursor == null) return result;
+            while (cursor.hasNext()) {
+                result.add(new String(cursor.next(), StandardCharsets.UTF_8));
+            }
+        }
+        return result;
     }
 }

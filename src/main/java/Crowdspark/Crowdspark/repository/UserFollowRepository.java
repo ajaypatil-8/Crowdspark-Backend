@@ -29,7 +29,21 @@ public interface UserFollowRepository extends JpaRepository<UserFollow, Long> {
 
     long countByFollowing_Id(Long followingId);
 
+    // AUDIT FIX (Feature #18): batched version of countByFollowing_Id, used to
+    // avoid firing one COUNT query per row when rendering a page of
+    // followers/following (previously up to ~20 extra queries per page — see
+    // FollowServiceImpl.toFollowResponse).
+    @Query("SELECT f.following.id, COUNT(f) FROM UserFollow f WHERE f.following.id IN :userIds GROUP BY f.following.id")
+    List<Object[]> countFollowersForUsers(@Param("userIds") List<Long> userIds);
+
     /** IDs of creators this user follows — used to build followed feed */
     @Query("SELECT f.following.id FROM UserFollow f WHERE f.follower.id = :userId")
     List<Long> findFollowingIds(@Param("userId") Long userId);
+
+    // AUDIT FIX (Feature #11/#18): needed by GDPR account deletion, which
+    // previously never touched this table at all — a "deleted" user's follow
+    // graph (who they followed, who followed them) stayed intact forever.
+    @org.springframework.data.jpa.repository.Modifying
+    @Query("DELETE FROM UserFollow f WHERE f.follower.id = :userId OR f.following.id = :userId")
+    void deleteAllInvolvingUser(@Param("userId") Long userId);
 }

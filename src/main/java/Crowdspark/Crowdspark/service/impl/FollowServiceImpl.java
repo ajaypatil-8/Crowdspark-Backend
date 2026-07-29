@@ -26,7 +26,9 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @Slf4j
 @Service
@@ -99,18 +101,49 @@ public class FollowServiceImpl implements FollowService {
 
     @Override
     public Page<FollowResponse> getFollowing(Long userId, int page, int size) {
-        return followRepository
-                .findByFollower_IdOrderByFollowedAtDesc(userId, PageRequest.of(page, size))
-                .map(f -> toFollowResponse(f.getFollowing(), f.getFollowedAt()));
+        Page<UserFollow> follows = followRepository
+                .findByFollower_IdOrderByFollowedAtDesc(userId, PageRequest.of(page, size));
+        return mapFollowPage(follows, UserFollow::getFollowing);
     }
 
     // ── getFollowers ──────────────────────────────────────────────────────────
 
     @Override
     public Page<FollowResponse> getFollowers(Long userId, int page, int size) {
-        return followRepository
-                .findByFollowing_IdOrderByFollowedAtDesc(userId, PageRequest.of(page, size))
-                .map(f -> toFollowResponse(f.getFollower(), f.getFollowedAt()));
+        Page<UserFollow> follows = followRepository
+                .findByFollowing_IdOrderByFollowedAtDesc(userId, PageRequest.of(page, size));
+        return mapFollowPage(follows, UserFollow::getFollower);
+    }
+
+    // AUDIT FIX (Feature #18): getFollowing/getFollowers used to call
+    // toFollowResponse() once per row, and that method fired two separate
+    // COUNT queries of its own (countByFollowing_Id, countByCreator) — up to
+    // ~2 * page-size extra round trips per single page render. This gathers
+    // the "other side" user IDs for the whole page ONCE, batch-fetches both
+    // counts in two queries total (regardless of page size), and maps each
+    // row from those pre-fetched lookups instead.
+    private Page<FollowResponse> mapFollowPage(
+            Page<UserFollow> follows,
+            java.util.function.Function<UserFollow, User> userExtractor
+    ) {
+        List<User> users = follows.getContent().stream().map(userExtractor).toList();
+        if (users.isEmpty()) {
+            return follows.map(f -> toFollowResponse(userExtractor.apply(f), f.getFollowedAt(), 0L, 0L));
+        }
+
+        List<Long> ids = users.stream().map(User::getId).toList();
+        Map<Long, Long> followerCounts = toCountMap(followRepository.countFollowersForUsers(ids));
+        Map<Long, Long> projectCounts  = toCountMap(projectRepository.countByCreatorIds(ids));
+
+        return follows.map(f -> {
+            User user = userExtractor.apply(f);
+            return toFollowResponse(
+                    user,
+                    f.getFollowedAt(),
+                    followerCounts.getOrDefault(user.getId(), 0L),
+                    projectCounts.getOrDefault(user.getId(), 0L)
+            );
+        });
     }
 
     // ── getFollowedFeed ───────────────────────────────────────────────────────
@@ -120,22 +153,42 @@ public class FollowServiceImpl implements FollowService {
         List<Long> followingIds = followRepository.findFollowingIds(userId);
         if (followingIds.isEmpty()) return List.of();
 
-        // Get latest APPROVED projects from followed creators (last 20)
-        return projectRepository.findByStatusOrderByCreatedAtDesc(ProjectStatus.APPROVED)
-                .stream()
-                .filter(p -> followingIds.contains(p.getCreator().getId()))
-                .limit(20)
-                .map(this::toFeedResponse)
+        // AUDIT FIX (Feature #18): this used to fetch every APPROVED project
+        // platform-wide and filter down to followed creators in Java — see
+        // ProjectRepository.findTop20ByCreator_IdInAndStatusOrderByCreatedAtDesc
+        // for the full explanation. Now the DB does the filtering and the
+        // limiting, so only rows we're actually going to return are ever loaded.
+        List<Project> projects = projectRepository
+                .findTop20ByCreator_IdInAndStatusOrderByCreatedAtDesc(followingIds, ProjectStatus.APPROVED);
+
+        if (projects.isEmpty()) return List.of();
+
+        // Batch-fetch "total backers" per creator instead of hardcoding it —
+        // see DonationRepository.countDistinctBackersByCreatorIds.
+        List<Long> creatorIds = projects.stream().map(p -> p.getCreator().getId()).distinct().toList();
+        Map<Long, Long> backersByCreator = toCountMap(
+                donationRepository.countDistinctBackersByCreatorIds(creatorIds));
+
+        return projects.stream()
+                .map(p -> toFeedResponse(p, backersByCreator.getOrDefault(p.getCreator().getId(), 0L)))
                 .toList();
+    }
+
+    /** Converts a `SELECT id, COUNT(...) GROUP BY id` result into a lookup map. */
+    private Map<Long, Long> toCountMap(List<Object[]> rows) {
+        Map<Long, Long> map = new HashMap<>();
+        for (Object[] row : rows) {
+            map.put((Long) row[0], (Long) row[1]);
+        }
+        return map;
     }
 
     // ── Mappers ───────────────────────────────────────────────────────────────
 
-    private FollowResponse toFollowResponse(User user, LocalDateTime followedAt) {
+    private FollowResponse toFollowResponse(User user, LocalDateTime followedAt,
+                                             long followerCount, long totalProjects) {
         boolean isCreator = user.getRoles() != null &&
                 user.getRoles().contains(Role.CREATOR);
-        long followerCount = followRepository.countByFollowing_Id(user.getId());
-        long totalProjects = projectRepository.countByCreator(user);
 
         return FollowResponse.builder()
                 .userId(user.getId())
@@ -150,7 +203,7 @@ public class FollowServiceImpl implements FollowService {
                 .build();
     }
 
-    private ProjectFeedResponse toFeedResponse(Project p) {
+    private ProjectFeedResponse toFeedResponse(Project p, long totalBackersForCreator) {
         String thumbnail = null, previewVideo = null;
         for (ProjectMedia m : p.getMedia()) {
             if (m.getUsage() == MediaUsage.THUMBNAIL)  thumbnail    = m.getMediaUrl();
@@ -162,6 +215,7 @@ public class FollowServiceImpl implements FollowService {
         long backers  = donationRepository.countByProject_IdAndPaymentStatus(
                 p.getId(), PaymentStatus.SUCCESS);
         String cat = p.getCategories().isEmpty() ? null : p.getCategories().get(0).getName();
+        User creator = p.getCreator();
 
         return ProjectFeedResponse.builder()
                 .id(p.getId()).title(p.getTitle())
@@ -170,11 +224,19 @@ public class FollowServiceImpl implements FollowService {
                 .goalAmount(p.getGoalAmount()).currentAmount(p.getCurrentAmount())
                 .fundedPercentage(pct).daysLeft((int) daysLeft).backersCount(backers)
                 .creator(ProjectFeedResponse.CreatorDto.builder()
-                        .id(p.getCreator().getId())
-                        .username(p.getCreator().getUsername())
-                        .profileImage(p.getCreator().getProfileImageUrl())
-                        .about(p.getCreator().getBio())
-                        .joinedAt(null).totalProjects(0L).totalBackers(0L)
+                        .id(creator.getId())
+                        .username(creator.getUsername())
+                        .profileImage(creator.getProfileImageUrl())
+                        .about(creator.getBio())
+                        // AUDIT FIX (Feature #18): these three were hardcoded to
+                        // null/0/0 regardless of reality. joinedAt and
+                        // totalProjects come straight off the already-loaded
+                        // creator entity (no extra query); totalBackers uses the
+                        // batch-fetched map built in getFollowedFeed() above.
+                        .joinedAt(creator.getCreatedAt() != null ? creator.getCreatedAt().toString() : null)
+                        .totalProjects(creator.getTotalProjectsCreated() != null
+                                ? creator.getTotalProjectsCreated().longValue() : 0L)
+                        .totalBackers(totalBackersForCreator)
                         .build())
                 .build();
     }

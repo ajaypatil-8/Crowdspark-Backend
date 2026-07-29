@@ -30,6 +30,23 @@ public interface ProjectRepository extends JpaRepository<Project, Long> {
 
     long countByCreatorAndStatus(User creator, ProjectStatus status);
 
+    // AUDIT FIX (Feature #18): batched version of countByCreator, used to avoid
+    // firing one COUNT query per row when rendering a page of followers/
+    // following (see FollowServiceImpl.toFollowResponse).
+    @Query("SELECT p.creator.id, COUNT(p) FROM Project p WHERE p.creator.id IN :creatorIds GROUP BY p.creator.id")
+    List<Object[]> countByCreatorIds(@Param("creatorIds") List<Long> creatorIds);
+
+    // AUDIT FIX (Feature #18): getFollowedFeed() used to fetch EVERY APPROVED
+    // project platform-wide (findByStatusOrderByCreatedAtDesc with no bound)
+    // and filter down to followed creators in application code — meaning it
+    // re-scans and re-loads the entire APPROVED-projects table into memory on
+    // every single call, and only gets slower as that table grows. This pushes
+    // both the creator-ID filter AND the top-20 limit into the query itself,
+    // so the DB only ever returns rows that were actually going to be used.
+    // "Top20" is a real Spring Data JPA keyword — it adds a LIMIT clause.
+    List<Project> findTop20ByCreator_IdInAndStatusOrderByCreatedAtDesc(
+            List<Long> creatorIds, ProjectStatus status);
+
     // ── Deadline scheduler (Feature #2) ───────────────────────────────────────
 
     @Query("SELECT p FROM Project p WHERE p.status = 'APPROVED' AND p.deadline < :now")
@@ -37,6 +54,15 @@ public interface ProjectRepository extends JpaRepository<Project, Long> {
 
     // ── Explore: no keyword — fast JPQL path ─────────────────────────────────
     // Used when user is just browsing without a search term.
+    //
+    // AUDIT FIX (Feature #16): minGoal/maxGoal used to be filtered in Java
+    // AFTER this query already paginated — see ProjectServiceImpl history.
+    // That meant totalElements/totalPages reflected only what survived
+    // filtering on the one page already fetched, so applying a goal-range
+    // filter silently broke pagination (under-reporting how many matching
+    // projects actually exist, and never even considering matches sitting on
+    // pages 2+). Filtering here instead means the DB — not Java after the
+    // fact — decides what "matches", so Page's own counts stay correct.
 
     @Query("""
         SELECT DISTINCT p FROM Project p
@@ -46,10 +72,14 @@ public interface ProjectRepository extends JpaRepository<Project, Long> {
         AND (:keyword IS NULL
              OR LOWER(p.title) LIKE :keyword
              OR LOWER(p.shortDescription) LIKE :keyword)
+        AND (:minGoal IS NULL OR p.goalAmount >= :minGoal)
+        AND (:maxGoal IS NULL OR p.goalAmount <= :maxGoal)
     """)
     Page<Project> findForExplore(
             @Param("categoryId") Long categoryId,
             @Param("keyword")    String keyword,
+            @Param("minGoal")    Double minGoal,
+            @Param("maxGoal")    Double maxGoal,
             Pageable pageable
     );
 
@@ -73,6 +103,10 @@ public interface ProjectRepository extends JpaRepository<Project, Long> {
     // Also added the missing ENDING_SOON case — previously any request with
     // sort=ENDING_SOON *and* a keyword silently fell back to relevance/newest
     // ordering instead of honoring the requested deadline-ascending sort.
+    //
+    // AUDIT FIX (Feature #16): minGoal/maxGoal are now filtered here (and in
+    // the count query below) instead of in Java after pagination — see the
+    // matching note on findForExplore() above for why that broke pagination.
 
     @Query(value = """
         SELECT p.*
@@ -87,6 +121,8 @@ public interface ProjectRepository extends JpaRepository<Project, Long> {
                OR LOWER(p.title)             LIKE LOWER('%' || :keyword || '%')
                OR LOWER(p.short_description) LIKE LOWER('%' || :keyword || '%')
               )
+        AND   (:minGoal IS NULL OR p.goal_amount >= :minGoal)
+        AND   (:maxGoal IS NULL OR p.goal_amount <= :maxGoal)
         ORDER BY
             CASE WHEN :sort IN ('MOST_FUNDED','TRENDING')
                  THEN p.current_amount END DESC NULLS LAST,
@@ -108,12 +144,16 @@ public interface ProjectRepository extends JpaRepository<Project, Long> {
                OR LOWER(p.title)             LIKE LOWER('%' || :keyword || '%')
                OR LOWER(p.short_description) LIKE LOWER('%' || :keyword || '%')
               )
+        AND   (:minGoal IS NULL OR p.goal_amount >= :minGoal)
+        AND   (:maxGoal IS NULL OR p.goal_amount <= :maxGoal)
         """,
             nativeQuery = true)
     Page<Project> searchWithFts(
             @Param("categoryId") Long   categoryId,
             @Param("keyword")    String keyword,
             @Param("sort")       String sort,
+            @Param("minGoal")    Double minGoal,
+            @Param("maxGoal")    Double maxGoal,
             Pageable             pageable
     );
 }
