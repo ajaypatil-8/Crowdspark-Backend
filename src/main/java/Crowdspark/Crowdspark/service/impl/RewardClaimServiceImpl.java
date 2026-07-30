@@ -35,6 +35,8 @@ public class RewardClaimServiceImpl implements RewardClaimService {
     private final ProjectRepository     projectRepository;
     private final UserRepository        userRepository;
     private final NotificationService   notificationService;
+    // BUG FIX (Feature #24): atomic quantity tracking for limited-quantity tiers.
+    private final RewardTierRepository  rewardTierRepository;
 
     // ── Create on payment success ─────────────────────────────────────────
 
@@ -52,8 +54,55 @@ public class RewardClaimServiceImpl implements RewardClaimService {
         claim.setStatus(RewardClaimStatus.PENDING);
         claimRepository.save(claim);
 
+        // BUG FIX (Feature #24): atomically reserve a unit for limited-
+        // quantity tiers. This is the second line of defense (after
+        // PaymentServiceImpl's sold-out check at order creation) for the
+        // rare race where two backers pay for the last unit at nearly the
+        // same instant -- the conditional UPDATE means at most one of them
+        // can actually decrement past zero. Payment has already succeeded
+        // by this point, so this never blocks claim creation itself: the
+        // backer paid, so their claim is recorded either way; this only
+        // keeps the remaining-count number itself honest.
+        RewardTier tier = donation.getRewardTier();
+        if (tier.getLimitedQuantity() != null) {
+            rewardTierRepository.decrementQuantityIfAvailable(tier.getId());
+        }
+
         log.info("Reward claim created: donationId={} tierId={} backerId={}",
                 donation.getId(), donation.getRewardTier().getId(), donation.getBacker().getId());
+    }
+
+    // ── Cancel on refund ───────────────────────────────────────────────────
+    // BUG FIX (Feature #24): nothing anywhere in the codebase ever called
+    // this before -- when a campaign failed and RefundTransactionExecutor
+    // processed refunds, any associated RewardClaim was left exactly as it
+    // was (PENDING/PROCESSING/etc.) forever, contradicting CANCELLED's own
+    // documented meaning ("donation refunded; reward no longer owed"). A
+    // creator's fulfillment view would keep showing a claim as open for a
+    // backer who had already gotten their money back -- and a limited
+    // tier's unit stayed marked as consumed even though it was never
+    // actually delivered.
+
+    @Override
+    @Transactional
+    public void cancelClaimForRefundedDonation(Donation donation) {
+        claimRepository.findByDonation_Id(donation.getId()).ifPresent(claim -> {
+            if (claim.getStatus() == RewardClaimStatus.CANCELLED
+                    || claim.getStatus() == RewardClaimStatus.FULFILLED) {
+                return; // already terminal, or already delivered -- a refund doesn't undo that
+            }
+            claim.setStatus(RewardClaimStatus.CANCELLED);
+            claimRepository.save(claim);
+
+            RewardTier tier = claim.getRewardTier();
+            if (tier.getLimitedQuantity() != null) {
+                rewardTierRepository.incrementQuantity(tier.getId());
+            }
+
+            log.info("Reward claim {} auto-cancelled: donation {} was refunded",
+                    claim.getId(), donation.getId());
+            notifyBackerClaimUpdate(claim);
+        });
     }
 
     // ── Creator: list project claims ──────────────────────────────────────

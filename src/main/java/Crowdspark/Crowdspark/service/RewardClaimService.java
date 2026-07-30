@@ -48,6 +48,17 @@ public interface RewardClaimService {
     RewardClaimResponse updateShipping(Long claimId, RewardClaimShippingRequest request, Long backerId);
 
     /**
+     * Auto-called by RefundTransactionExecutor after a donation's refund
+     * completes. Cancels the associated RewardClaim (if one exists) and
+     * gives the reserved unit back to the tier's available count — the
+     * backer got their money back, so the reward is no longer owed. No-op
+     * if there's no claim for this donation, or if it's already
+     * CANCELLED/FULFILLED (a refund shouldn't retroactively "un-deliver" a
+     * reward that already shipped).
+     */
+    void cancelClaimForRefundedDonation(Donation donation);
+
+    /**
      * GET /api/projects/{projectId}/reward-claims/summary
      * Returns count per status — used in creator dashboard card.
      */

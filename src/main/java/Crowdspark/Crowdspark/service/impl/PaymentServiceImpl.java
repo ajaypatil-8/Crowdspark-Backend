@@ -121,6 +121,19 @@ public class PaymentServiceImpl implements PaymentService {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                         "Amount must be at least \u20b9" + rewardTier.getMinimumAmount() + " for this reward tier");
             }
+            // BUG FIX (Feature #24): limitedQuantity/quantityAvailable were
+            // captured on the tier but never checked anywhere -- a "limited
+            // to N" reward could be selected and paid for by unlimited
+            // backers. This is the primary check (before payment even
+            // starts); the atomic decrement in RewardClaimServiceImpl is the
+            // second line of defense for the rare case of two people
+            // checking out the last unit at nearly the same instant.
+            if (rewardTier.getLimitedQuantity() != null
+                    && rewardTier.getQuantityAvailable() != null
+                    && rewardTier.getQuantityAvailable() <= 0) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "This reward tier is sold out. Please choose another tier or continue without one.");
+            }
         }
 
         // 4. Create Razorpay order (amount in paise = rupees x 100)

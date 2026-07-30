@@ -36,4 +36,12 @@ public interface RewardClaimRepository extends JpaRepository<RewardClaim, Long> 
     @Query("SELECT c.status, COUNT(c) FROM RewardClaim c " +
            "WHERE c.project.id = :projectId GROUP BY c.status")
     List<Object[]> countByStatusForProject(@Param("projectId") Long projectId);
+
+    /**
+     * Non-cancelled claims against a tier — used when a creator changes
+     * limitedQuantity on an existing tier, so quantityAvailable is
+     * recomputed against what's actually been claimed rather than drifting
+     * via repeated deltas.
+     */
+    long countByRewardTier_IdAndStatusNot(Long rewardTierId, RewardClaimStatus excludedStatus);
 }

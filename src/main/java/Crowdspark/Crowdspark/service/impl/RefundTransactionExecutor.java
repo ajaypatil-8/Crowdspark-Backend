@@ -55,6 +55,8 @@ public class RefundTransactionExecutor {
     private final UserRepository      userRepository;
     private final NotificationService notificationService;
     private final RestTemplate        restTemplate;
+    // BUG FIX (Feature #24): see cancelClaimForRefundedDonation() call below.
+    private final Crowdspark.Crowdspark.service.RewardClaimService rewardClaimService;
 
     @Value("${razorpay.key-id}")
     private String razorpayKeyId;
@@ -108,6 +110,14 @@ public class RefundTransactionExecutor {
             donation.setRazorpayRefundId(razorpayRefundId);
             donation.setRefundedAt(LocalDateTime.now());
             donationRepository.save(donation);
+
+            // BUG FIX (Feature #24): cancel any associated reward claim --
+            // the backer got their money back, so this reward is no longer
+            // owed. Previously nothing ever called this, so a creator's
+            // fulfillment dashboard kept showing refunded backers' claims
+            // as open indefinitely, and a limited tier's unit stayed marked
+            // consumed even though it was never delivered.
+            rewardClaimService.cancelClaimForRefundedDonation(donation);
 
             // Reverse backer stats
             User backer = donation.getBacker();

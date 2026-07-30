@@ -106,6 +106,15 @@ public class ProjectServiceImpl implements ProjectService {
                 tier.setTitle(t.getTitle());
                 tier.setDescription(t.getDescription());
                 tier.setMinimumAmount(t.getMinimumAmount());
+                // BUG FIX (Feature #24): this creation path (initial campaign
+                // setup) had the exact same gap as RewardTierServiceImpl.add()
+                // -- estimatedDelivery/limitedQuantity were captured on the
+                // request but never mapped onto the entity. A brand new tier
+                // has no claims yet, so quantityAvailable starts equal to
+                // the full limit (null stays null -- unlimited).
+                tier.setEstimatedDelivery(t.getEstimatedDelivery());
+                tier.setLimitedQuantity(t.getLimitedQuantity());
+                tier.setQuantityAvailable(t.getLimitedQuantity());
                 tier.setProject(saved);
                 rewardTierRepository.save(tier);
             }
