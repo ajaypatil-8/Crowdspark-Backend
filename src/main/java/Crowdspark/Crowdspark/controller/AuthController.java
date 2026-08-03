@@ -259,7 +259,12 @@ public class AuthController {
     public ResponseEntity<Crowdspark.Crowdspark.dto.ApiResponse<String>> forgotPassword(
             @RequestBody Map<String, String> body) {
         String email = body.get("email");
-        if (email != null && !email.isBlank()) {
+        // BUG FIX (Feature #25): an oversized "email" used to still trigger a
+        // DB delete + insert + outbound email send. Treated the same as a
+        // blank one (silently no-op, still 200) rather than thrown, so this
+        // endpoint's anti-enumeration contract — always 200, no hint whether
+        // validation or non-existence caused the no-op — is unchanged.
+        if (email != null && !email.isBlank() && email.length() <= 255) {
             try {
                 otpRepository.deleteByEmail(email.trim());
                 String token = UUID.randomUUID().toString();
@@ -292,7 +297,15 @@ public class AuthController {
                 || email.isBlank() || token.isBlank() || newPassword.isBlank()) {
             throw new AuthException("Missing required fields");
         }
+        // BUG FIX (Feature #25): matches the @Size(max=128/255) caps already
+        // enforced on these same fields in RegisterRequest/LoginRequest — this
+        // endpoint took a raw Map and had no upper bound at all, so a
+        // multi-MB "password" string still reached BCrypt uncapped.
+        if (email.length() > 255 || token.length() > 255) {
+            throw new AuthException("Invalid or expired reset link.");
+        }
         if (newPassword.length() < 8) throw new AuthException("Password must be at least 8 characters");
+        if (newPassword.length() > 128) throw new AuthException("Password must be 128 characters or less");
         Optional<OtpVerification> recordOpt = otpRepository.findByEmail(email.trim());
         if (recordOpt.isEmpty()) throw new AuthException("Invalid or expired reset link.");
         OtpVerification record = recordOpt.get();

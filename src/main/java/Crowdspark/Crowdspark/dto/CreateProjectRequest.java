@@ -6,6 +6,7 @@ package Crowdspark.Crowdspark.dto;
 
 import Crowdspark.Crowdspark.entity.type.MediaType;
 import Crowdspark.Crowdspark.entity.type.MediaUsage;
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;
 import lombok.Data;
 
@@ -45,11 +46,19 @@ public class CreateProjectRequest {
     @Size(max = 5, message = "Maximum 5 categories allowed")
     private List<Long> categoryIds;
 
+    // BUG FIX (Feature #25): @Valid was missing on both lists below. Bean
+    // Validation only cascades into collection elements when the field itself
+    // is annotated @Valid -- without it, @NotEmpty/@Size here only checked the
+    // list's own size, and every constraint declared inside ProjectMediaRequest
+    // / RewardTierRequest (NotBlank mediaUrl, @Size(500), NotNull mediaType,
+    // RewardTierRequest's min/max amount caps, etc.) was silently never run.
     @NotEmpty(message = "At least one media item is required")
     @Size(max = 20, message = "Maximum 20 media items allowed")
+    @Valid
     private List<ProjectMediaRequest> media;
 
     @Size(max = 10, message = "Maximum 10 reward tiers allowed")
+    @Valid
     private List<RewardTierRequest> rewardTiers = new ArrayList<>();
 
     @Data

@@ -186,7 +186,9 @@ public class PaymentServiceImpl implements PaymentService {
     public DonationResponse verifyAndConfirm(PaymentVerifyRequest request, Long backerId) {
 
         // 1. Load the PENDING donation
-        Donation donation = donationRepository.findById(request.getDonationId())
+        // BUG FIX (Feature #1/#4): locked read -- see DonationRepository.findByIdForUpdate
+        // for why a plain findById() here raced with the webhook path below.
+        Donation donation = donationRepository.findByIdForUpdate(request.getDonationId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Donation not found"));
 
         // 2. Security: ensure this donation belongs to the caller
@@ -284,7 +286,8 @@ public class PaymentServiceImpl implements PaymentService {
             return;
         }
 
-        Donation donation = donationRepository.findByRazorpayOrderId(razorpayOrderId).orElse(null);
+        // BUG FIX (Feature #1/#4): locked read -- see DonationRepository.findByIdForUpdate.
+        Donation donation = donationRepository.findByRazorpayOrderIdForUpdate(razorpayOrderId).orElse(null);
         if (donation == null) {
             // Could be an order from a different environment/account, or one we
             // never got as far as saving. Nothing to reconcile, and nothing

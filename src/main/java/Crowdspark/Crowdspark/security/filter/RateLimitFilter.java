@@ -165,8 +165,23 @@ public class RateLimitFilter extends OncePerRequestFilter {
     /**
      * Extracts real client IP, respecting X-Forwarded-For for
      * deployments behind Nginx / Cloudflare / load balancers.
+     *
+     * BUG FIX (Feature #8): this used to trust X-Forwarded-For / X-Real-IP
+     * unconditionally. Since the rate-limit key is "rate:<tag>:<ip>", anyone
+     * on the open internet could send a different fake X-Forwarded-For value
+     * on every request and get a brand-new bucket each time -- a one-line
+     * bypass of the entire login/OTP brute-force protection. These headers
+     * are only trustworthy when they were actually set by OUR reverse proxy,
+     * which is what request.getRemoteAddr() (the TCP peer Spring Boot itself
+     * saw -- not attacker-controllable) being a private/loopback address
+     * indicates. A direct connection from the public internet always uses
+     * getRemoteAddr() instead, no matter what headers it sent.
      */
     private String extractClientIp(HttpServletRequest request) {
+        String directAddr = request.getRemoteAddr();
+        if (!isTrustedProxyAddress(directAddr)) {
+            return directAddr;
+        }
         String xff = request.getHeader("X-Forwarded-For");
         if (xff != null && !xff.isBlank()) {
             // X-Forwarded-For may be a comma-separated list; first is the real client
@@ -174,7 +189,22 @@ public class RateLimitFilter extends OncePerRequestFilter {
         }
         String realIp = request.getHeader("X-Real-IP");
         if (realIp != null && !realIp.isBlank()) return realIp;
-        return request.getRemoteAddr();
+        return directAddr;
+    }
+
+    /**
+     * True when the direct TCP peer is loopback or an RFC1918 private address
+     * — i.e. our own container/VM network (Nginx, Docker Compose, a K8s
+     * ingress, etc.), not a caller reachable directly from the internet.
+     */
+    private boolean isTrustedProxyAddress(String addr) {
+        if (addr == null) return false;
+        if (addr.equals("127.0.0.1") || addr.equals("0:0:0:0:0:0:0:1") || addr.equals("::1")) {
+            return true;
+        }
+        return addr.startsWith("10.")
+                || addr.startsWith("192.168.")
+                || addr.matches("^172\\.(1[6-9]|2[0-9]|3[0-1])\\..*");
     }
 
     private void sendRateLimitResponse(HttpServletResponse response,

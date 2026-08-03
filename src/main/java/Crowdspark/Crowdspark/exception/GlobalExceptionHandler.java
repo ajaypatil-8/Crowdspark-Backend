@@ -17,6 +17,7 @@ package Crowdspark.Crowdspark.exception;
 import Crowdspark.Crowdspark.dto.ApiResponse;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.ConstraintViolationException;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -32,6 +33,7 @@ import org.springframework.web.server.ResponseStatusException;
 import java.util.HashMap;
 import java.util.Map;
 
+@Slf4j
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
@@ -161,11 +163,17 @@ public class GlobalExceptionHandler {
     }
 
     // ── Catch-all ─────────────────────────────────────────────────────────────
-
+    // BUG FIX (Feature #25): this returned ex.getMessage() straight to the
+    // client for ANY uncaught exception — which can include raw SQL fragments
+    // (constraint names, column names), internal file paths, or other
+    // implementation details a bad actor could use for reconnaissance. The
+    // real message is still logged server-side; the client now gets a
+    // generic, safe message instead.
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiResponse<Void>> handleAll(Exception ex) {
+        log.error("Unhandled exception: {}", ex.getMessage(), ex);
         return ResponseEntity
                 .status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(ApiResponse.error(ex.getMessage()));
+                .body(ApiResponse.error("Something went wrong. Please try again later."));
     }
 }

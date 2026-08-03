@@ -127,7 +127,7 @@ public class AdminController {
     public ResponseEntity<ApiResponse<KycStatusResponse>> rejectKyc(
             @PathVariable Long userId,
             @AuthenticationPrincipal String adminUsername,
-            @RequestBody AdminKycAction action) {
+            @Valid @RequestBody AdminKycAction action) {
         User admin = userService.getByUsername(adminUsername);
         return ResponseEntity.ok(ApiResponse.ok("KYC rejected",
                 kycService.rejectKyc(userId, admin.getId(), action.getRejectionReason())));

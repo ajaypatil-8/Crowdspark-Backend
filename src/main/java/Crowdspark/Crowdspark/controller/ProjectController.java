@@ -77,7 +77,7 @@ public class ProjectController {
     @Operation(summary = "Explore/search projects", description = "Filter by category, keyword, sort. Paginated.")
     @GetMapping("/explore")
     public ResponseEntity<ApiResponse<Page<ProjectFeedResponse>>> explore(
-            @ModelAttribute ExploreRequest request
+            @Valid @ModelAttribute ExploreRequest request
     ) {
         return ResponseEntity.ok(ApiResponse.ok(projectService.exploreProjects(request)));
     }

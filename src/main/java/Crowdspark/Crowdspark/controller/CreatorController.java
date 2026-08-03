@@ -44,7 +44,7 @@ public class CreatorController {
     @PostMapping("/verify-otp")
     public ResponseEntity<String> verifyOtp(
             @AuthenticationPrincipal String username,
-            @RequestBody VerifyOtpRequest request
+            @Valid @RequestBody VerifyOtpRequest request
     ) {
         User user = userService.getByUsername(username);
         return ResponseEntity.ok(kycService.verifyOtp(user.getId(), request.getOtp()));

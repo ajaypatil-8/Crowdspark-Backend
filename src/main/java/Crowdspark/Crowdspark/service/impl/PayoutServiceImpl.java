@@ -71,17 +71,30 @@ public class PayoutServiceImpl implements PayoutService {
         }
 
         // 2. Prevent duplicate payouts
-        if (payoutRepository.existsByProject_Id(projectId)) {
-            Payout existing = payoutRepository.findByProject_Id(projectId).get();
-            if (existing.getStatus() == PayoutStatus.COMPLETED) {
+        // BUG FIX (Feature #3): this used to fall through silently for a FAILED
+        // (or stuck INITIATED) existing payout and then insert a *second*
+        // Payout row for the same project. payouts has no unique constraint on
+        // project_id, and PayoutRepository.findByProject_Id/existsByProject_Id
+        // both assume a single row (Optional / boolean) -- a second row made
+        // Spring Data throw IncorrectResultSizeDataAccessException the very
+        // next time either was called (e.g. the admin dashboard's payout
+        // status check). Retrying now reuses the same row instead.
+        Payout payout = payoutRepository.findByProject_Id(projectId).orElse(null);
+        if (payout != null) {
+            if (payout.getStatus() == PayoutStatus.COMPLETED) {
                 throw new ResponseStatusException(HttpStatus.CONFLICT,
                         "Payout already completed for this project.");
             }
-            if (existing.getStatus() == PayoutStatus.PROCESSING) {
+            if (payout.getStatus() == PayoutStatus.PROCESSING) {
                 throw new ResponseStatusException(HttpStatus.CONFLICT,
                         "Payout is already in progress. Razorpay payout id: "
-                        + existing.getRazorpayPayoutId());
+                        + payout.getRazorpayPayoutId());
             }
+            // FAILED, or stuck INITIATED from a crash mid-call — retry in place.
+            payout.setFailureReason(null);
+        } else {
+            payout = new Payout();
+            payout.setProject(project);
         }
 
         // 3. Validate creator has a UPI ID
@@ -100,9 +113,7 @@ public class PayoutServiceImpl implements PayoutService {
         double netAmount      = Math.round((gross - feeAmount) * 100.0) / 100.0;
         long   netInPaise     = Math.round(netAmount * 100);
 
-        // 5. Create Payout record (INITIATED)
-        Payout payout = new Payout();
-        payout.setProject(project);
+        // 5. Save Payout record (new row on first attempt, same row on retry)
         payout.setCreator(creator);
         payout.setGrossAmount(gross);
         payout.setPlatformFeePercent(platformFeePercent);

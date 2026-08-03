@@ -17,5 +17,6 @@ public class CampaignUpdateRequest {
     private String content;
 
     /** Optional — Cloudinary URL uploaded separately */
+    @Size(max = 500, message = "Image URL must be under 500 characters")
     private String imageUrl;
 }

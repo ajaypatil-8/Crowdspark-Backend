@@ -6,7 +6,9 @@ package Crowdspark.Crowdspark.repository;
 
 import Crowdspark.Crowdspark.entity.Donation;
 import Crowdspark.Crowdspark.entity.type.PaymentStatus;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -14,6 +16,24 @@ import java.util.List;
 import java.util.Optional;
 
 public interface DonationRepository extends JpaRepository<Donation, Long> {
+
+    // BUG FIX (Feature #1/#4): verifyAndConfirm() (client callback) and
+    // confirmFromWebhook() (Razorpay server callback) both normally fire for
+    // the same donation within moments of each other -- that's the whole
+    // point of having the webhook as a safety net. With a plain findById(),
+    // both transactions could read PaymentStatus.PENDING before either
+    // commits, and BOTH would then credit project.currentAmount, double-email
+    // the receipt, and double-count backer/creator stats. These two locked
+    // lookups take a DB row lock (SELECT ... FOR UPDATE) so the second caller
+    // blocks until the first commits, then sees PaymentStatus.SUCCESS and
+    // safely no-ops via the existing duplicate-check in confirmDonationPaid.
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT d FROM Donation d WHERE d.id = :id")
+    Optional<Donation> findByIdForUpdate(@Param("id") Long id);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT d FROM Donation d WHERE d.razorpayOrderId = :orderId")
+    Optional<Donation> findByRazorpayOrderIdForUpdate(@Param("orderId") String orderId);
 
     // FIX #10: backs the receipt download endpoint. Fetch-joins backer/project/
     // creator/rewardTier in one query so PaymentServiceImpl can pull every field

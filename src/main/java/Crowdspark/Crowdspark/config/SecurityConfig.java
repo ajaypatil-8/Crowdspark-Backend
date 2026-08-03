@@ -176,6 +176,16 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/v1/projects/*/updates").permitAll()   // Feature #5
                         .requestMatchers(HttpMethod.GET, "/api/v1/projects/*/comments").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/projects/*/funding-stream").permitAll()
+                        // BUG FIX (Features #19/#20): both controllers are written to be
+                        // public — ProjectReviewController's GETs explicitly resolve an
+                        // optional/nullable caller for anonymous viewers, and
+                        // ProjectMilestoneController's getMilestones() is documented
+                        // "Public" — but neither was ever added here, so both fell
+                        // through to anyRequest().authenticated() and 401'd every
+                        // logged-out visitor to a project page.
+                        .requestMatchers(HttpMethod.GET, "/api/v1/projects/*/reviews").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/projects/*/reviews/summary").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/projects/*/milestones").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/v1/projects/*/view").permitAll()
                         .requestMatchers("/auth/totp/verify-login").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/users/*/followers").permitAll()

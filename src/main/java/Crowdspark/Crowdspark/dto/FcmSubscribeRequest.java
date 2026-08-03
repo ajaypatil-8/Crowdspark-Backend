@@ -10,6 +10,7 @@ import lombok.Data;
 public class FcmSubscribeRequest {
 
     @NotBlank(message = "FCM token is required")
+    @Size(max = 4096, message = "FCM token must be 4096 characters or less")
     private String token;
 
     /** Optional browser/OS hint for debugging, e.g. "Chrome/Windows" */
