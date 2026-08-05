@@ -1,30 +1,3 @@
-// src/main/java/Crowdspark/Crowdspark/service/impl/RefreshTokenServiceImpl.java
-// Feature #28 — Refresh Token Rotation Security
-//
-// KEY CHANGES vs the previous implementation:
-//
-// 1. FAMILY TRACKING
-//    Every token now carries a familyId UUID shared by all tokens in the same
-//    login session. create(userId) generates a new family; create(userId, familyId,
-//    parentHash) continues it for rotation.
-//
-// 2. THEFT DETECTION
-//    validate() now checks: if the token is REVOKED and has a familyId, this is
-//    a replay of a previously-rotated token (theft signal). It immediately revokes
-//    every token in the family, sends an async email security alert, and throws
-//    a descriptive AuthException.
-//
-// 3. DOUBLE-HASH BUG FIX
-//    The old AuthController called revoke(entity.getToken()) where entity.getToken()
-//    was the SHA-256 hash returned from the DB. revoke() then hashed it again
-//    (sha256(sha256(raw))). This meant revocation silently failed every time.
-//    Fix: AuthController now calls revoke(rawToken) with the original raw string,
-//    and we added revokeByHash(hash) for internal use where we already have the hash.
-//
-// 4. SCHEDULED CLEANUP
-//    deleteExpiredTokens() runs nightly to hard-delete old rows and keep the table
-//    from growing unboundedly.
-
 package Crowdspark.Crowdspark.service.impl;
 
 import Crowdspark.Crowdspark.entity.RefreshToken;
@@ -119,7 +92,7 @@ public class RefreshTokenServiceImpl implements RefreshTokenService {
         if (token.isRevoked()) {
             if (token.getFamilyId() != null) {
                 log.warn("SECURITY: Refresh token reuse detected for userId={} familyId={}. " +
-                         "Revoking entire family.", token.getUserId(), token.getFamilyId());
+                        "Revoking entire family.", token.getUserId(), token.getFamilyId());
 
                 // Revoke every token in this login session chain immediately
                 repository.revokeAllByFamilyId(token.getFamilyId());
@@ -128,10 +101,10 @@ public class RefreshTokenServiceImpl implements RefreshTokenService {
                 sendTheftAlertAsync(token.getUserId());
 
                 throw new AuthException(
-                    "SECURITY_ALERT: Your session was terminated because an expired " +
-                    "token was reused — a possible sign of account compromise. " +
-                    "All active sessions have been signed out. " +
-                    "If this wasn't you, please reset your password immediately."
+                        "SECURITY_ALERT: Your session was terminated because an expired " +
+                                "token was reused — a possible sign of account compromise. " +
+                                "All active sessions have been signed out. " +
+                                "If this wasn't you, please reset your password immediately."
                 );
             }
             // No family (legacy token from before Feature #28) — plain revoked error
@@ -195,20 +168,21 @@ public class RefreshTokenServiceImpl implements RefreshTokenService {
             var user = userService.getById(userId);
             String subject = "⚠️ CrowdSpark Security Alert: Suspicious Login Detected";
             String body = String.format(
-                "Hi %s,%n%n" +
-                "We detected an attempt to reuse an expired session token on your%n" +
-                "CrowdSpark account (%s).%n%n" +
-                "As a precaution, ALL active sessions for your account have been%n" +
-                "immediately signed out.%n%n" +
-                "✅ What you should do now:%n" +
-                "1. Log in again at crowdspark.in%n" +
-                "2. If you did not expect this, go to Settings → Change Password%n" +
-                "3. If you need help, contact us at security@crowdspark.in%n%n" +
-                "This alert was sent because someone (possibly not you) tried to%n" +
-                "use an old session token that had already been rotated.%n%n" +
-                "– The CrowdSpark Security Team",
-                user.getName(),
-                user.getEmail()
+                    "Hi %s,%n%n" +
+                            "We detected an attempt to reuse an expired session token on your%n" +
+                            "CrowdSpark account (%s).%n%n" +
+                            "As a precaution, ALL active sessions for your account have been%n" +
+                            "immediately signed out.%n%n" +
+                            "✅ What you should do now:%n" +
+                            "1. Log in again at crowdspark.in%n" +
+                            "2. If you did not expect this, reset your password immediately using%n" +
+                            "   the \"Forgot password?\" link on the sign-in page%n" +
+                            "3. If you need help, contact us at security@crowdspark.in%n%n" +
+                            "This alert was sent because someone (possibly not you) tried to%n" +
+                            "use an old session token that had already been rotated.%n%n" +
+                            "– The CrowdSpark Security Team",
+                    user.getName(),
+                    user.getEmail()
             );
             emailService.sendSimpleEmail(user.getEmail(), subject, body);
             log.info("Security alert email sent to userId={}", userId);

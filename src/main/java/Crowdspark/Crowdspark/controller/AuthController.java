@@ -289,23 +289,10 @@ public class AuthController {
                     @ApiResponse(responseCode = "401", description = "Invalid or expired token") })
     @PostMapping("/reset-password")
     public ResponseEntity<Crowdspark.Crowdspark.dto.ApiResponse<String>> resetPassword(
-            @RequestBody Map<String, String> body) {
-        String email = body.get("email");
-        String token = body.get("token");
-        String newPassword = body.get("password");
-        if (email == null || token == null || newPassword == null
-                || email.isBlank() || token.isBlank() || newPassword.isBlank()) {
-            throw new AuthException("Missing required fields");
-        }
-        // BUG FIX (Feature #25): matches the @Size(max=128/255) caps already
-        // enforced on these same fields in RegisterRequest/LoginRequest — this
-        // endpoint took a raw Map and had no upper bound at all, so a
-        // multi-MB "password" string still reached BCrypt uncapped.
-        if (email.length() > 255 || token.length() > 255) {
-            throw new AuthException("Invalid or expired reset link.");
-        }
-        if (newPassword.length() < 8) throw new AuthException("Password must be at least 8 characters");
-        if (newPassword.length() > 128) throw new AuthException("Password must be 128 characters or less");
+            @Valid @RequestBody Crowdspark.Crowdspark.dto.ResetPasswordRequest request) {
+        String email = request.getEmail();
+        String token = request.getToken();
+        String newPassword = request.getPassword();
         Optional<OtpVerification> recordOpt = otpRepository.findByEmail(email.trim());
         if (recordOpt.isEmpty()) throw new AuthException("Invalid or expired reset link.");
         OtpVerification record = recordOpt.get();

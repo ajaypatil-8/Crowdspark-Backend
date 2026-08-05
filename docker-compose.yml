@@ -1,0 +1,103 @@
+# Crowdspark-Backend/docker-compose.yml
+# Feature #29 — Docker + docker-compose
+#
+# Usage:
+#   cp .env.example .env      # then fill in the REQUIRED values
+#   docker compose up -d --build
+#
+# The backend's DB_URL/REDIS_HOST below are hardcoded to the service names
+# ("postgres", "redis"), NOT to the localhost defaults baked into
+# application.properties — those localhost defaults are for running the jar
+# directly on your own machine. Inside this compose network, "localhost"
+# from the backend container's point of view is the backend container
+# itself, so pointing it at "postgres"/"redis" (Compose's built-in DNS for
+# service names) is required, not a style choice.
+
+services:
+  postgres:
+    image: postgres:18
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: crowdspark
+      POSTGRES_USER: ${DB_USERNAME:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in your .env file}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-postgres} -d crowdspark"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    environment:
+      # -- Wiring to the two services above. Do not change to "localhost". --
+      DB_URL: jdbc:postgresql://postgres:5432/crowdspark
+      DB_USERNAME: ${DB_USERNAME:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in your .env file}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in your .env file — 32+ random bytes, e.g. openssl rand -base64 48}
+
+      CLOUDINARY_CLOUD_NAME: ${CLOUDINARY_CLOUD_NAME:-dutsfk8u6}
+      CLOUDINARY_API_KEY: ${CLOUDINARY_API_KEY:-}
+      CLOUDINARY_API_SECRET: ${CLOUDINARY_API_SECRET:-}
+
+      MAIL_HOST: ${MAIL_HOST:-smtp.gmail.com}
+      MAIL_PORT: ${MAIL_PORT:-587}
+      MAIL_USERNAME: ${MAIL_USERNAME:-}
+      MAIL_PASSWORD: ${MAIL_PASSWORD:-}
+
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
+      GITHUB_REDIRECT_URI: ${GITHUB_REDIRECT_URI:-http://localhost:8080/crowdspark/login/oauth2/code/github}
+
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+
+      RAZORPAY_KEY_ID: ${RAZORPAY_KEY_ID:-rzp_test_ScEr5x5BTRh6iN}
+      RAZORPAY_KEY_SECRET: ${RAZORPAY_KEY_SECRET:-}
+      RAZORPAY_WEBHOOK_SECRET: ${RAZORPAY_WEBHOOK_SECRET:-}
+      RAZORPAY_ACCOUNT_NUMBER: ${RAZORPAY_ACCOUNT_NUMBER:-}
+
+      # Left pointing at the (now-deleted) classpath default on purpose. The
+      # service-account file that used to ship here had a real, live private
+      # key committed despite being gitignored — rotate it in the Firebase
+      # console, then mount a NEW file as shown below instead of ever baking
+      # one into the image again. Until then this stays unset and push
+      # notifications are simply disabled (FirebaseConfig degrades gracefully).
+      FIREBASE_SERVICE_ACCOUNT_PATH: ${FIREBASE_SERVICE_ACCOUNT_PATH:-classpath:firebase-service-account.json}
+    # To enable push notifications with your OWN, freshly-rotated credentials:
+    #   1. Save the new key OUTSIDE the repo, e.g. ./secrets/firebase-service-account.json
+    #   2. Uncomment the two lines below
+    # volumes:
+    #   - ./secrets/firebase-service-account.json:/app/firebase-service-account.json:ro
+    # and add to the environment block above:
+    #   FIREBASE_SERVICE_ACCOUNT_PATH: file:/app/firebase-service-account.json
+
+volumes:
+  pgdata:

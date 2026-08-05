@@ -17,6 +17,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
@@ -26,7 +27,17 @@ import java.time.format.DateTimeFormatter;
 
 @Slf4j
 @Component
-@Order(1)
+// BUG FIX (Feature #26): was @Order(1). Spring Security's own filter chain
+// registers at an order far more "precedent" than a plain 1 (the same reason
+// XssCleanFilter uses HIGHEST_PRECEDENCE and RateLimitFilter uses
+// HIGHEST_PRECEDENCE + 1, explicitly "before JWT" — see that file). With
+// @Order(1) this ran AFTER Spring Security's authorization check, so a
+// request to an old unversioned path like /api/projects/explore never
+// reached this filter at all: SecurityConfig's rules are written for
+// /api/v1/... only, so the old path fell through to
+// anyRequest().authenticated() and the caller got a 401 instead of the
+// intended 308 redirect — for public AND protected endpoints alike.
+@Order(Ordered.HIGHEST_PRECEDENCE + 2)   // after XssCleanFilter/RateLimitFilter, still well before Spring Security
 public class DeprecatedApiRedirectFilter implements Filter {
 
     @Value("${app.api.deprecation.sunset-date:}")

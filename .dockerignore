@@ -1,0 +1,31 @@
+# Crowdspark-Backend/.dockerignore
+# Feature #29 — Docker + docker-compose
+
+.git
+.gitignore
+target/
+*.class
+
+# Defense in depth: even though this file should be deleted from the repo
+# (see the audit note — it was found committed with a live private key
+# despite being gitignored), excluding it here means the COPY src ./src step
+# in the Dockerfile can never bake it into an image layer even if it's still
+# sitting on disk locally when you run `docker build`.
+src/main/resources/firebase-service-account.json
+
+.env
+.env.*
+!.env.example
+/application-example.yml
+
+.idea/
+.vscode/
+*.iml
+.DS_Store
+
+*.log
+logs/
+
+Dockerfile
+docker-compose.yml
+README.md
