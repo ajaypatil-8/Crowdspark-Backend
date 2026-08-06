@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  src/main/resources/logback-spring.xml
+  Feature #32 — Structured JSON logging
+
+  Two output modes, picked by the ACTIVE SPRING PROFILE (not by environment
+  detection) so behavior is explicit and consistent wherever it runs:
+
+    - No "prod" profile active (default: IntelliJ, `mvn spring-boot:run`,
+      `docker compose up` without SPRING_PROFILES_ACTIVE set, the "test"
+      profile): human-readable, colored console output.
+
+    - "prod" profile active (set via SPRING_PROFILES_ACTIVE=prod in
+      docker-compose.prod.yml — the actual deploy server, not local dev-via-
+      Docker): one JSON object per line via logstash-logback-encoder, ready
+      for a log aggregator (ELK/Loki/CloudWatch/etc.) to parse with no
+      separate log-shipper config needed.
+
+  traceId/userId/endpoint (Feature #32's MDC fields, set by
+  RequestTracingFilter + MdcUserIdInterceptor) are included automatically:
+  LogstashEncoder flattens ALL current MDC entries into the JSON output by
+  default, and the dev pattern below references them directly via %X{...}.
+-->
+<configuration>
+    <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
+
+    <springProfile name="!prod">
+        <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+            <encoder>
+                <pattern>%d{HH:mm:ss.SSS} %highlight(%-5level) [%thread] %cyan(%logger{36}) - %msg  %yellow(traceId=%X{traceId:-} userId=%X{userId:--} endpoint=%X{endpoint:-})%n</pattern>
+            </encoder>
+        </appender>
+    </springProfile>
+
+    <springProfile name="prod">
+        <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+            <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+                <customFields>{"service":"crowdspark-backend"}</customFields>
+            </encoder>
+        </appender>
+    </springProfile>
+
+    <root level="INFO">
+        <appender-ref ref="CONSOLE"/>
+    </root>
+
+    <logger name="Crowdspark.Crowdspark" level="INFO"/>
+</configuration>

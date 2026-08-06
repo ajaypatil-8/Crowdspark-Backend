@@ -17,7 +17,10 @@
 # ↓↓↓ Replace this with your actual GitHub owner/repo before first deploy ↓↓↓
 services:
   backend:
-    image: https://github.com/ajaypatil-8/Crowdspark-Backend
+    image: ghcr.io/YOUR_GITHUB_USERNAME/YOUR_REPO_NAME:latest
     environment:
-      
+      # Feature #32: switches logback-spring.xml to structured JSON output.
+      # Only set here, not in the base docker-compose.yml, so local dev
+      # (including `docker compose up` without this override) still gets
+      # human-readable console logs.
       SPRING_PROFILES_ACTIVE: prod
