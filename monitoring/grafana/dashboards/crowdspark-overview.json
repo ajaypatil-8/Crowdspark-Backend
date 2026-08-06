@@ -1,0 +1,134 @@
+{
+  "title": "CrowdSpark Overview",
+  "uid": "crowdspark-overview",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "timezone": "browser",
+  "time": { "from": "now-6h", "to": "now" },
+  "refresh": "30s",
+  "tags": ["crowdspark", "feature-31"],
+  "panels": [
+    {
+      "id": 1,
+      "title": "Active Projects",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "crowdspark-prometheus" },
+      "gridPos": { "x": 0, "y": 0, "w": 4, "h": 4 },
+      "targets": [
+        { "expr": "crowdspark_projects_active", "legendFormat": "Active", "refId": "A" }
+      ],
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "steps": [{ "color": "green", "value": null }] } }, "overrides": [] }
+    },
+    {
+      "id": 2,
+      "title": "Funded Projects",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "crowdspark-prometheus" },
+      "gridPos": { "x": 4, "y": 0, "w": 4, "h": 4 },
+      "targets": [
+        { "expr": "crowdspark_projects_funded", "legendFormat": "Funded", "refId": "A" }
+      ],
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "steps": [{ "color": "blue", "value": null }] } }, "overrides": [] }
+    },
+    {
+      "id": 3,
+      "title": "Failed Projects",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "crowdspark-prometheus" },
+      "gridPos": { "x": 8, "y": 0, "w": 4, "h": 4 },
+      "targets": [
+        { "expr": "crowdspark_projects_failed", "legendFormat": "Failed", "refId": "A" }
+      ],
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "steps": [{ "color": "red", "value": null }] } }, "overrides": [] }
+    },
+    {
+      "id": 4,
+      "title": "Pending Review",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "crowdspark-prometheus" },
+      "gridPos": { "x": 12, "y": 0, "w": 4, "h": 4 },
+      "targets": [
+        { "expr": "crowdspark_projects_pending_review", "legendFormat": "Pending", "refId": "A" }
+      ],
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "steps": [{ "color": "orange", "value": null }] } }, "overrides": [] }
+    },
+    {
+      "id": 5,
+      "title": "Total Funds Raised (₹)",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "crowdspark-prometheus" },
+      "gridPos": { "x": 16, "y": 0, "w": 8, "h": 4 },
+      "targets": [
+        { "expr": "crowdspark_funds_raised_inr", "legendFormat": "Funds Raised", "refId": "A" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "currencyINR", "color": { "mode": "thresholds" }, "thresholds": { "steps": [{ "color": "green", "value": null }] } }, "overrides": [] }
+    },
+    {
+      "id": 6,
+      "title": "Donation Rate (per 5m)",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "crowdspark-prometheus" },
+      "gridPos": { "x": 0, "y": 4, "w": 12, "h": 8 },
+      "targets": [
+        { "expr": "rate(crowdspark_donations_succeeded_total[5m])", "legendFormat": "Donations / sec", "refId": "A" }
+      ],
+      "fieldConfig": { "defaults": {}, "overrides": [] }
+    },
+    {
+      "id": 7,
+      "title": "Donation Amount Rate (₹ / 5m)",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "crowdspark-prometheus" },
+      "gridPos": { "x": 12, "y": 4, "w": 12, "h": 8 },
+      "targets": [
+        { "expr": "rate(crowdspark_donations_amount_inr_total[5m])", "legendFormat": "INR / sec", "refId": "A" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "currencyINR" }, "overrides": [] }
+    },
+    {
+      "id": 8,
+      "title": "Projects Submitted (cumulative)",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "crowdspark-prometheus" },
+      "gridPos": { "x": 0, "y": 12, "w": 12, "h": 8 },
+      "targets": [
+        { "expr": "crowdspark_projects_submitted_total", "legendFormat": "Submitted", "refId": "A" }
+      ],
+      "fieldConfig": { "defaults": {}, "overrides": [] }
+    },
+    {
+      "id": 9,
+      "title": "Refunds Completed (cumulative)",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "crowdspark-prometheus" },
+      "gridPos": { "x": 12, "y": 12, "w": 12, "h": 8 },
+      "targets": [
+        { "expr": "crowdspark_refunds_completed_total", "legendFormat": "Refunds", "refId": "A" }
+      ],
+      "fieldConfig": { "defaults": {}, "overrides": [] }
+    },
+    {
+      "id": 10,
+      "title": "JVM Heap Used",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "crowdspark-prometheus" },
+      "gridPos": { "x": 0, "y": 20, "w": 12, "h": 8 },
+      "targets": [
+        { "expr": "sum(jvm_memory_used_bytes{area=\"heap\"})", "legendFormat": "Heap used", "refId": "A" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] }
+    },
+    {
+      "id": 11,
+      "title": "HTTP Request Rate (per endpoint)",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "crowdspark-prometheus" },
+      "gridPos": { "x": 12, "y": 20, "w": 12, "h": 8 },
+      "targets": [
+        { "expr": "sum by (uri) (rate(http_server_requests_seconds_count[5m]))", "legendFormat": "{{uri}}", "refId": "A" }
+      ],
+      "fieldConfig": { "defaults": {}, "overrides": [] }
+    }
+  ]
+}

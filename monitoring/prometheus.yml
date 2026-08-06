@@ -1,0 +1,27 @@
+# Crowdspark-Backend/monitoring/prometheus.yml
+# Feature #31 — Health checks & monitoring
+#
+# Scrapes the backend's Actuator metrics endpoint. Uses the "backend" service
+# name and port 8081 (management.server.port) -- both only resolve/reach
+# correctly when this is run together with the main docker-compose.yml, e.g.:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.monitoring.yml up -d
+#
+# Note: no /crowdspark prefix on the metrics_path -- Actuator is on a
+# separate management port and does not inherit server.servlet.context-path.
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: 'crowdspark-backend'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['backend:8081']
+        labels:
+          service: 'crowdspark-backend'
+
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']

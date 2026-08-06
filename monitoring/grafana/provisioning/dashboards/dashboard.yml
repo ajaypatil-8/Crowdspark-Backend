@@ -1,0 +1,17 @@
+# Crowdspark-Backend/monitoring/grafana/provisioning/dashboards/dashboard.yml
+# Feature #31 — auto-loads any dashboard JSON placed in the mounted
+# /var/lib/grafana/dashboards folder (see docker-compose.monitoring.yml)
+# on Grafana startup, so crowdspark-overview.json needs no manual import.
+
+apiVersion: 1
+
+providers:
+  - name: CrowdSpark
+    orgId: 1
+    folder: CrowdSpark
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards

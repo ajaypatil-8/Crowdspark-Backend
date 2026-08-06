@@ -1,0 +1,14 @@
+# Crowdspark-Backend/monitoring/grafana/provisioning/datasources/datasource.yml
+# Feature #31 — auto-registers Prometheus as a Grafana data source on startup.
+# uid must match the datasource uid referenced inside the dashboard JSON.
+
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    uid: crowdspark-prometheus
+    isDefault: true
+    editable: true
