@@ -6,6 +6,7 @@ import Crowdspark.Crowdspark.entity.type.KycStatus;
 import Crowdspark.Crowdspark.entity.type.Role;
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.BatchSize;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
@@ -19,6 +20,10 @@ import java.util.Set;
 @NoArgsConstructor
 @Entity
 @EntityListeners(AuditingEntityListener.class)
+// Feature #33: batch-loads lazy User proxies (Project.creator, Donation.*,
+// etc.) — see the long comment on ProjectRepository's exploreProjects-backing
+// queries for why this needed to be a class-level fix rather than JOIN FETCH.
+@BatchSize(size = 25)
 @Table(name = "users", indexes = {
         @Index(name = "idx_users_account_status", columnList = "account_status"),
         @Index(name = "idx_users_kyc_status",     columnList = "kyc_status")

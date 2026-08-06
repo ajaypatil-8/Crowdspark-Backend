@@ -2,9 +2,14 @@ package Crowdspark.Crowdspark.entity;
 
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.BatchSize;
 
 @Entity
 @Table(name = "reward_tiers")
+// Feature #33: batch-loads lazy RewardTier proxies — Donation.rewardTier is
+// touched per-donation in DonationServiceImpl.toResponse for every donation
+// that selected a tier.
+@BatchSize(size = 25)
 @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
 public class RewardTier {
 

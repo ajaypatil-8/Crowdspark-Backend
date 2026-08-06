@@ -46,9 +46,16 @@ public interface DonationRepository extends JpaRepository<Donation, Long> {
             "WHERE d.id = :id")
     Optional<Donation> findDetailedById(@Param("id") Long id);
 
-    List<Donation> findByBacker_IdOrderByCreatedAtDesc(Long backerId);
+    // BUG FIX (Feature #33): both feed DonationServiceImpl.toResponse(), which
+    // reads d.getProject() and d.getBacker() for every donation in the list —
+    // plain derived queries + LAZY associations meant one extra SELECT per
+    // donation for each. JOIN FETCH pulls both in the same query (safe to
+    // combine two to-one associations, unlike two to-many collections).
+    @Query("SELECT d FROM Donation d JOIN FETCH d.project JOIN FETCH d.backer WHERE d.backer.id = :backerId ORDER BY d.createdAt DESC")
+    List<Donation> findByBacker_IdOrderByCreatedAtDesc(@Param("backerId") Long backerId);
 
-    List<Donation> findByProject_IdOrderByCreatedAtDesc(Long projectId);
+    @Query("SELECT d FROM Donation d JOIN FETCH d.project JOIN FETCH d.backer WHERE d.project.id = :projectId ORDER BY d.createdAt DESC")
+    List<Donation> findByProject_IdOrderByCreatedAtDesc(@Param("projectId") Long projectId);
 
     long countByProject_IdAndPaymentStatus(Long projectId, PaymentStatus status);
 

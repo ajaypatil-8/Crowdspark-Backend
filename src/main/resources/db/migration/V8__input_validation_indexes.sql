@@ -1,19 +1,7 @@
-
-
-CREATE INDEX IF NOT EXISTS idx_donations_user_id
-    ON donations (user_id, created_at DESC);
-
-CREATE INDEX IF NOT EXISTS idx_otp_verification_user_type
-    ON otp_verification (user_id, otp_type, created_at DESC);
-
-CREATE INDEX IF NOT EXISTS idx_kyc_documents_user_id
-    ON kyc_documents (user_id);
-
-CREATE INDEX IF NOT EXISTS idx_kyc_documents_status
-    ON kyc_documents (status);
-
-CREATE INDEX IF NOT EXISTS idx_reward_tiers_project_id
-    ON reward_tiers (project_id);
-
-CREATE INDEX IF NOT EXISTS idx_audit_logs_entity
-    ON audit_logs (entity_type, entity_id, created_at DESC);
+-- This file was a byte-for-byte duplicate of V4__input_validation_indexes.sql
+-- (including the same column-name bugs that made V4 fail on every attempt —
+-- see the comment at the top of V4 for the full explanation). Now that V4
+-- has been corrected, re-running the same CREATE INDEX IF NOT EXISTS
+-- statements here would be a harmless no-op, so this file is intentionally
+-- left as a no-op rather than duplicating V4's content a second time.
+SELECT 1;

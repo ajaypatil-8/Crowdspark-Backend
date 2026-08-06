@@ -3,6 +3,7 @@ package Crowdspark.Crowdspark.entity;
 import Crowdspark.Crowdspark.entity.type.ProjectStatus;
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.BatchSize;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
@@ -75,10 +76,12 @@ public class Project {
             joinColumns = @JoinColumn(name = "project_id"),
             inverseJoinColumns = @JoinColumn(name = "category_id")
     )
+    @BatchSize(size = 25)
     private List<Category> categories = new ArrayList<>();
 
     // ALL MEDIA (images + videos)
     @OneToMany(mappedBy = "project", cascade = CascadeType.ALL, orphanRemoval = true)
+    @BatchSize(size = 25)
     private List<ProjectMedia> media = new ArrayList<>();
 
 
