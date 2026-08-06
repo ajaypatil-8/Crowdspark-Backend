@@ -55,6 +55,7 @@ public class ProjectServiceImpl implements ProjectService {
     private final CategoryRepository   categoryRepository;
     private final RewardTierRepository rewardTierRepository;
     private final DonationRepository   donationRepository;
+    private final Crowdspark.Crowdspark.metrics.PlatformMetrics platformMetrics; // <- Feature #31
 
     // Statuses publicly viewable on the detail page
     private static final Set<ProjectStatus> VIEWABLE = Set.of(
@@ -99,6 +100,7 @@ public class ProjectServiceImpl implements ProjectService {
         if (!hasThumbnail) throw new RuntimeException("Project must have at least one THUMBNAIL image");
 
         Project saved = projectRepository.save(project);
+        platformMetrics.recordProjectSubmitted();
 
         if (request.getRewardTiers() != null) {
             for (RewardTierRequest t : request.getRewardTiers()) {

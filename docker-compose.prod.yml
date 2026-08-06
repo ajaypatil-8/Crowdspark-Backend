@@ -1,0 +1,23 @@
+# Crowdspark-Backend/docker-compose.prod.yml
+# Feature #30 — CI/CD pipeline
+#
+# An override, not a standalone file — always used together with the base
+# docker-compose.yml from Feature #29:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# The base file's `backend.build: .` is for local dev, where you want to
+# build from whatever source is on disk. On the actual server you want the
+# exact image the CI pipeline already built, tested, and pushed — not a
+# rebuild from source (which would skip the test gate entirely). Compose
+# merges this in and uses `image:` instead of `build:` as long as this file
+# is passed with -f AFTER the base file, which is what backend-deploy.yml's
+# SSH step already does.
+#
+# ↓↓↓ Replace this with your actual GitHub owner/repo before first deploy ↓↓↓
+services:
+  backend:
+    image: https://github.com/ajaypatil-8/Crowdspark-Backend
+    environment:
+      
+      SPRING_PROFILES_ACTIVE: prod

@@ -57,6 +57,7 @@ public class RefundTransactionExecutor {
     private final RestTemplate        restTemplate;
     // BUG FIX (Feature #24): see cancelClaimForRefundedDonation() call below.
     private final Crowdspark.Crowdspark.service.RewardClaimService rewardClaimService;
+    private final Crowdspark.Crowdspark.metrics.PlatformMetrics platformMetrics; // <- Feature #31
 
     @Value("${razorpay.key-id}")
     private String razorpayKeyId;
@@ -110,6 +111,7 @@ public class RefundTransactionExecutor {
             donation.setRazorpayRefundId(razorpayRefundId);
             donation.setRefundedAt(LocalDateTime.now());
             donationRepository.save(donation);
+            platformMetrics.recordRefundCompleted();
 
             // BUG FIX (Feature #24): cancel any associated reward claim --
             // the backer got their money back, so this reward is no longer

@@ -1,0 +1,46 @@
+# Crowdspark-Backend/docker-compose.monitoring.yml
+# Feature #31 — Health checks & monitoring
+#
+# Optional overlay, not a standalone file. Combine with the base compose
+# file so Prometheus can resolve the "backend" service by name:
+#
+#   Local dev + monitoring:
+#     docker compose -f docker-compose.yml -f docker-compose.monitoring.yml up -d --build
+#
+#   Production + monitoring:
+#     docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.monitoring.yml up -d
+#
+# Kept separate from docker-compose.yml on purpose: most local dev sessions
+# don't need Prometheus+Grafana running, and this keeps that overhead opt-in.
+#
+# Grafana is on host port 3001, not 3000 -- 3000 is already used by the
+# Next.js frontend dev server (see FRONTEND_URL in .env.example).
+
+services:
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    restart: unless-stopped
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "9090:9090"
+
+  grafana:
+    image: grafana/grafana:11.3.1
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "3001:3000"
+
+volumes:
+  prometheus-data:
+  grafana-data:

@@ -1,0 +1,54 @@
+# Crowdspark-Backend/.github/workflows/backend-ci.yml
+# Feature #30 — CI/CD pipeline
+#
+# Runs on every PR targeting main: compiles the project and runs the real
+# JUnit/Mockito suite (Feature #13). No database/Redis service containers are
+# needed here — src/test/resources/application-test.properties already
+# points everything at an in-memory H2 database and a no-op cache, so the
+# whole suite is self-contained.
+#
+# This workflow intentionally has NO deployment secrets or permissions —
+# PRs (including from forks) can trigger it safely.
+
+name: Backend CI
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    name: Build & Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Make mvnw executable
+        run: chmod +x mvnw
+
+      # BUG FIX carried over from pom.xml: --enable-preview marks every
+      # compiled class (main AND test) as preview bytecode. Without a
+      # matching maven-surefire-plugin <argLine>--enable-preview</argLine>
+      # (now added to pom.xml), this step fails immediately with
+      # UnsupportedClassVersionError before a single test runs — that gap
+      # existed independently of CI and was fixed at the source (pom.xml),
+      # not worked around here.
+      - name: Build & run tests
+        run: ./mvnw -B clean verify
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-reports
+          path: target/surefire-reports/
+          retention-days: 14

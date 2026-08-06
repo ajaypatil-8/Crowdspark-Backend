@@ -13,6 +13,7 @@ import Crowdspark.Crowdspark.entity.type.MediaUsage;
 import Crowdspark.Crowdspark.entity.type.PaymentStatus;
 import Crowdspark.Crowdspark.entity.type.ProjectStatus;
 import Crowdspark.Crowdspark.entity.type.Role;
+import Crowdspark.Crowdspark.metrics.PlatformMetrics;
 import Crowdspark.Crowdspark.repository.DonationRepository;
 import Crowdspark.Crowdspark.repository.ProjectRepository;
 import Crowdspark.Crowdspark.repository.RewardTierRepository;
@@ -58,6 +59,7 @@ public class PaymentServiceImpl implements PaymentService {
     private final RewardClaimService rewardClaimService;
     private final EmailService emailService; // <- Feature #9
     private final PdfReceiptService pdfReceiptService; // <- FIX #10: on-demand download
+    private final PlatformMetrics platformMetrics; // <- Feature #31
 
     @Value("${razorpay.key-id}")
     private String razorpayKeyId;
@@ -320,6 +322,7 @@ public class PaymentServiceImpl implements PaymentService {
         donation.setPaidAt(LocalDateTime.now());
         donationRepository.save(donation);
         log.info("Payment confirmed for donation {} | paymentId: {}", donation.getId(), razorpayPaymentId);
+        platformMetrics.recordSuccessfulDonation(donation.getAmount());
 
         // Update project.currentAmount
         Project project = donation.getProject();

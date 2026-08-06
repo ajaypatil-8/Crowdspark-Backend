@@ -41,11 +41,15 @@ COPY --from=build /build/app.jar ./app.jar
 RUN chown spring:spring app.jar
 USER spring
 
-EXPOSE 8080
+EXPOSE 8080 8081
 
-# start-period is generous: Flyway migrations + Firebase/Cloudinary client
-# init + DB/Redis connection pool warm-up can take a while on first boot.
+# Feature #31: probes the real Actuator health endpoint (added this feature)
+# instead of Feature #29's original workaround of hitting a public business
+# endpoint as a liveness proxy. Actuator listens on 8081 (management.server.
+# port), a different port from the public API on 8080, and does NOT carry
+# the /crowdspark context-path prefix that 8080 does -- see the comment on
+# management.server.port in application.properties for why.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=75s --retries=3 \
-    CMD curl -f http://localhost:8080/crowdspark/api/v1/categories || exit 1
+    CMD curl -f http://localhost:8081/actuator/health || exit 1
 
 ENTRYPOINT ["java", "--enable-preview", "-jar", "app.jar"]

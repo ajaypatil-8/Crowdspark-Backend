@@ -19,16 +19,41 @@ import java.util.List;
 public interface ProjectRepository extends JpaRepository<Project, Long> {
 
     // ── Feed / Dashboard ───────────────────────────────────────────────────────
+    // BUG FIX (Feature #33): both of these feed a per-project mapping loop
+    // (ProjectServiceImpl.toFeedResponse / getCreatorProjects) that reads
+    // p.getCreator() for every single project — with a plain derived query
+    // and creator LAZY, that's one extra SELECT per project (classic N+1).
+    // JOIN FETCH pulls creator in the SAME query instead. media/categories
+    // are also touched per-project in those mappers, but both are List-typed
+    // collections, and Hibernate throws MultipleBagFetchException if you try
+    // to JOIN FETCH two collections in one query — so those two rely on the
+    // @BatchSize(25) just added to Project.media/categories instead, which
+    // turns their N+1 into a couple of batched IN(...) queries.
 
-    List<Project> findByStatusOrderByCreatedAtDesc(ProjectStatus status);
+    @Query("SELECT p FROM Project p JOIN FETCH p.creator WHERE p.status = :status ORDER BY p.createdAt DESC")
+    List<Project> findByStatusOrderByCreatedAtDesc(@Param("status") ProjectStatus status);
 
-    List<Project> findByCreatorOrderByCreatedAtDesc(User creator);
+    @Query("SELECT p FROM Project p JOIN FETCH p.creator WHERE p.creator = :creator ORDER BY p.createdAt DESC")
+    List<Project> findByCreatorOrderByCreatedAtDesc(@Param("creator") User creator);
 
-    List<Project> findByStatus(ProjectStatus status);
+    // BUG FIX (Feature #33): sole caller is AdminServiceImpl.getPendingProjects(),
+    // whose mapper reads project.getCreator() for every project in the admin
+    // approval queue — JOIN FETCH pulls it in the same query instead of one
+    // extra SELECT per project.
+    @Query("SELECT p FROM Project p JOIN FETCH p.creator WHERE p.status = :status")
+    List<Project> findByStatus(@Param("status") ProjectStatus status);
 
     long countByCreator(User creator);
 
     long countByCreatorAndStatus(User creator, ProjectStatus status);
+
+    // ── Feature #31: platform-wide metrics (used by PlatformMetrics gauges) ────
+    // Distinct from countByCreatorAndStatus above — that's scoped to one
+    // creator's dashboard; this is a platform-wide count for /actuator/prometheus.
+    long countByStatus(ProjectStatus status);
+
+    @Query("SELECT COALESCE(SUM(p.currentAmount), 0) FROM Project p WHERE p.status IN ('APPROVED', 'FUNDED')")
+    double sumCurrentAmountAcrossLiveProjects();
 
     // AUDIT FIX (Feature #18): batched version of countByCreator, used to avoid
     // firing one COUNT query per row when rendering a page of followers/
