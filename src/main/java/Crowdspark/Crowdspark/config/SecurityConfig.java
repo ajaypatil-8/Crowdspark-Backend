@@ -2,6 +2,7 @@ package Crowdspark.Crowdspark.config;
 
 import Crowdspark.Crowdspark.security.JwtAuthenticationFilter;
 import Crowdspark.Crowdspark.security.OAuth2SuccessHandler;
+import Crowdspark.Crowdspark.security.RestAccessDeniedHandler;
 import Crowdspark.Crowdspark.security.RestAuthenticationEntryPoint;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
@@ -34,6 +35,7 @@ public class SecurityConfig {
     private final JwtAuthenticationFilter     jwtAuthenticationFilter;
     private final OAuth2SuccessHandler        oAuth2SuccessHandler;
     private final RestAuthenticationEntryPoint restAuthEntryPoint;
+    private final RestAccessDeniedHandler restAccessDeniedHandler;
 
     // FIX #14: endpoints reachable with no Bearer token yet (there's nothing to
     // be authenticated with before login/registration succeeds), so they can't
@@ -114,11 +116,19 @@ public class SecurityConfig {
                         .referrerPolicy(rp -> rp.policy(
                                 ReferrerPolicyHeaderWriter.ReferrerPolicy.STRICT_ORIGIN_WHEN_CROSS_ORIGIN))
 
-                        // Content-Security-Policy: restrict resource origins
-                        // — script-src: only our domain + Razorpay checkout
-                        // — connect-src: API + Razorpay + Cloudinary
-                        // — img-src: our domain + Cloudinary CDN + data URIs for base64
-                        // — frame-src: Razorpay checkout iframe
+                        // Content-Security-Policy: restrict resource origins for whatever
+                        // HTML THIS backend itself serves — in practice, that's just
+                        // Swagger UI (/swagger-ui.html) and error pages. A response header
+                        // set here has NO effect on the Next.js frontend's own pages: that's
+                        // a separate origin/server, and a browser only applies the CSP that
+                        // came back with THAT response, not this one. The Razorpay/Cloudinary
+                        // allowances below are kept anyway (harmless — Swagger UI doesn't use
+                        // them, so they're not restricting anything it needs) in case a future
+                        // backend-served page needs them, but they do NOT mean Razorpay
+                        // checkout or Cloudinary images loaded by the frontend are protected
+                        // by this header. If that's wanted, the frontend needs its own CSP
+                        // (Next.js: a middleware.ts or headers() entry in next.config.ts) —
+                        // out of scope here since Feature #35 is backend-only.
                         .contentSecurityPolicy(csp -> csp.policyDirectives(
                                 "default-src 'self'; " +
                                         "script-src 'self' https://checkout.razorpay.com; " +
@@ -232,7 +242,8 @@ public class SecurityConfig {
 
                 // ── EXCEPTION HANDLING ────────────────────────────────────────────────
                 .exceptionHandling(ex -> ex
-                        .authenticationEntryPoint(restAuthEntryPoint))
+                        .authenticationEntryPoint(restAuthEntryPoint)
+                        .accessDeniedHandler(restAccessDeniedHandler))
 
                 // ── OAUTH2 ────────────────────────────────────────────────────────────
                 .oauth2Login(oauth -> oauth
