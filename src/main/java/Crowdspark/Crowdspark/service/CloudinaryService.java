@@ -13,4 +13,9 @@ public interface CloudinaryService {
 
 
     void deleteFile(String publicId);
+
+    /** Feature #38: use this overload for anything that might be a video (e.g.
+     *  project media) — pass "video" or "image" explicitly rather than relying
+     *  on the single-arg overload's "image" assumption. */
+    void deleteFile(String publicId, String resourceType);
 }

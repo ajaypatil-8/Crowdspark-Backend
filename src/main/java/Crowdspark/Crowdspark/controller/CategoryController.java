@@ -9,11 +9,13 @@ import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.CacheControl;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 @RestController
 @RequestMapping("/api/v1/categories")
@@ -38,6 +40,8 @@ public class CategoryController {
             description = "Public endpoint. Returns all available campaign categories.")
     @GetMapping
     public ResponseEntity<ApiResponse<List<Category>>> getAll() {
-        return ResponseEntity.ok(ApiResponse.ok(categoryService.getAllCategories()));
+        return ResponseEntity.ok()
+                .cacheControl(CacheControl.maxAge(1, TimeUnit.HOURS).cachePublic())
+                .body(ApiResponse.ok(categoryService.getAllCategories()));
     }
 }
