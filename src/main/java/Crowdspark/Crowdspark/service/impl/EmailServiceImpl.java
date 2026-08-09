@@ -2,9 +2,19 @@
 // Feature #9 — HTML email templates (Thymeleaf)
 // Feature #10 — sendBackerReceiptEmail also generates a PDF receipt
 // (via PdfReceiptService) and attaches it to the same email.
+// Feature #36 — Async job queue: public methods now enqueue a job onto
+// Redis instead of doing the work themselves. EmailJobWorker (a background
+// consumer, see the queue package) dequeues and calls the "Now" methods
+// below, which hold the EXACT SAME logic these methods used to run directly
+// under @Async — nothing about template rendering, PDF generation, or SMTP
+// sending changed, only when/where it runs. @Async is gone from the public
+// methods since enqueueing is a fast Redis push, not slow SMTP I/O; the
+// "Now" methods don't need it either since they're already invoked from a
+// background thread (the worker, or the Redis-down fallback executor).
 
 package Crowdspark.Crowdspark.service.impl;
 
+import Crowdspark.Crowdspark.queue.RedisQueueService;
 import Crowdspark.Crowdspark.service.EmailService;
 import Crowdspark.Crowdspark.service.PdfReceiptService;
 import jakarta.mail.MessagingException;
@@ -15,7 +25,6 @@ import org.springframework.core.io.ByteArrayResource;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
-import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.thymeleaf.TemplateEngine;
 import org.thymeleaf.context.Context;
@@ -31,14 +40,19 @@ import java.util.Locale;
 @Service
 public class EmailServiceImpl implements EmailService {
 
+    private static final String EMAIL_QUEUE = "email";
+
     private final JavaMailSender mailSender;
     private final TemplateEngine templateEngine;
     private final PdfReceiptService pdfReceiptService; // ← Feature #10
+    private final RedisQueueService queueService;       // ← Feature #36
 
-    public EmailServiceImpl(JavaMailSender mailSender, TemplateEngine templateEngine, PdfReceiptService pdfReceiptService) {
+    public EmailServiceImpl(JavaMailSender mailSender, TemplateEngine templateEngine,
+                             PdfReceiptService pdfReceiptService, RedisQueueService queueService) {
         this.mailSender = mailSender;
         this.templateEngine = templateEngine;
         this.pdfReceiptService = pdfReceiptService;
+        this.queueService = queueService;
     }
 
     @Value("${spring.mail.username}")
@@ -58,11 +72,31 @@ public class EmailServiceImpl implements EmailService {
             DateTimeFormatter.ofPattern("d MMMM yyyy, h:mm a", Locale.ENGLISH);
 
     // ─────────────────────────────────────────────────────────────────────────
+    // Feature #36 payload records — one per job type. Kept as nested records
+    // (not a flat Map<String,Object>) so Jackson deserializes each field into
+    // its correct declared type automatically, including LocalDateTime.
+    // ─────────────────────────────────────────────────────────────────────────
+    public record OtpEmailPayload(String toEmail, String name, String otp, int validityMinutes) {}
+    public record SimpleEmailPayload(String toEmail, String subject, String body) {}
+    public record WelcomeEmailPayload(String toEmail, String name) {}
+    public record CampaignApprovedPayload(String toEmail, String creatorName, String projectTitle, Long projectId) {}
+    public record CampaignRejectedPayload(String toEmail, String creatorName, String projectTitle, String reason) {}
+    public record CampaignFundedPayload(String toEmail, String creatorName, String projectTitle, Long projectId,
+                                         Double raisedAmount, Double goalAmount) {}
+    public record BackerReceiptPayload(String toEmail, String backerName, String projectTitle, Long projectId,
+                                        Long donationId, Double amount, String transactionId,
+                                        String rewardTierTitle, LocalDateTime paidAt) {}
+
+    // ─────────────────────────────────────────────────────────────────────────
     // OTP — numeric code (creator upgrade / KYC re-verification)
     // ─────────────────────────────────────────────────────────────────────────
     @Override
-    @Async("emailTaskExecutor")
     public void sendOtpEmail(String toEmail, String name, String otp, int validityMinutes) {
+        queueService.enqueue(EMAIL_QUEUE, "OTP", new OtpEmailPayload(toEmail, name, otp, validityMinutes),
+                () -> sendOtpEmailNow(toEmail, name, otp, validityMinutes));
+    }
+
+    public void sendOtpEmailNow(String toEmail, String name, String otp, int validityMinutes) {
         String safeName = nullSafe(name, "there");
 
         Context ctx = baseContext();
@@ -83,8 +117,12 @@ public class EmailServiceImpl implements EmailService {
     // GDPR deletion confirmation, refresh-token-theft alert).
     // ─────────────────────────────────────────────────────────────────────────
     @Override
-    @Async("emailTaskExecutor")
     public void sendSimpleEmail(String toEmail, String subject, String body) {
+        queueService.enqueue(EMAIL_QUEUE, "SIMPLE", new SimpleEmailPayload(toEmail, subject, body),
+                () -> sendSimpleEmailNow(toEmail, subject, body));
+    }
+
+    public void sendSimpleEmailNow(String toEmail, String subject, String body) {
         SimpleMailMessage message = new SimpleMailMessage();
         message.setTo(toEmail);
         message.setSubject(subject);
@@ -96,8 +134,12 @@ public class EmailServiceImpl implements EmailService {
     // Welcome — sent once, right after registration
     // ─────────────────────────────────────────────────────────────────────────
     @Override
-    @Async("emailTaskExecutor")
     public void sendWelcomeEmail(String toEmail, String name) {
+        queueService.enqueue(EMAIL_QUEUE, "WELCOME", new WelcomeEmailPayload(toEmail, name),
+                () -> sendWelcomeEmailNow(toEmail, name));
+    }
+
+    public void sendWelcomeEmailNow(String toEmail, String name) {
         String safeName = nullSafe(name, "there");
         String exploreUrl = frontendUrl + "/explore";
         String createCampaignUrl = frontendUrl + "/dashboard/create-campaign";
@@ -117,8 +159,13 @@ public class EmailServiceImpl implements EmailService {
     // Campaign approved
     // ─────────────────────────────────────────────────────────────────────────
     @Override
-    @Async("emailTaskExecutor")
     public void sendCampaignApprovedEmail(String toEmail, String creatorName, String projectTitle, Long projectId) {
+        queueService.enqueue(EMAIL_QUEUE, "CAMPAIGN_APPROVED",
+                new CampaignApprovedPayload(toEmail, creatorName, projectTitle, projectId),
+                () -> sendCampaignApprovedEmailNow(toEmail, creatorName, projectTitle, projectId));
+    }
+
+    public void sendCampaignApprovedEmailNow(String toEmail, String creatorName, String projectTitle, Long projectId) {
         String safeName = nullSafe(creatorName, "there");
         String projectUrl = frontendUrl + "/projects/" + projectId;
 
@@ -138,8 +185,13 @@ public class EmailServiceImpl implements EmailService {
     // Campaign rejected
     // ─────────────────────────────────────────────────────────────────────────
     @Override
-    @Async("emailTaskExecutor")
     public void sendCampaignRejectedEmail(String toEmail, String creatorName, String projectTitle, String reason) {
+        queueService.enqueue(EMAIL_QUEUE, "CAMPAIGN_REJECTED",
+                new CampaignRejectedPayload(toEmail, creatorName, projectTitle, reason),
+                () -> sendCampaignRejectedEmailNow(toEmail, creatorName, projectTitle, reason));
+    }
+
+    public void sendCampaignRejectedEmailNow(String toEmail, String creatorName, String projectTitle, String reason) {
         String safeName = nullSafe(creatorName, "there");
         String safeReason = nullSafe(reason, "No specific reason was provided.");
         String dashboardUrl = frontendUrl + "/dashboard/my-campaigns";
@@ -161,8 +213,14 @@ public class EmailServiceImpl implements EmailService {
     // Campaign funded
     // ─────────────────────────────────────────────────────────────────────────
     @Override
-    @Async("emailTaskExecutor")
     public void sendCampaignFundedEmail(String toEmail, String creatorName, String projectTitle, Long projectId,
+                                        Double raisedAmount, Double goalAmount) {
+        queueService.enqueue(EMAIL_QUEUE, "CAMPAIGN_FUNDED",
+                new CampaignFundedPayload(toEmail, creatorName, projectTitle, projectId, raisedAmount, goalAmount),
+                () -> sendCampaignFundedEmailNow(toEmail, creatorName, projectTitle, projectId, raisedAmount, goalAmount));
+    }
+
+    public void sendCampaignFundedEmailNow(String toEmail, String creatorName, String projectTitle, Long projectId,
                                         Double raisedAmount, Double goalAmount) {
         String safeName = nullSafe(creatorName, "there");
         double raised = raisedAmount == null ? 0.0 : raisedAmount;
@@ -192,8 +250,17 @@ public class EmailServiceImpl implements EmailService {
     // Backer receipt (+ PDF attachment — Feature #10)
     // ─────────────────────────────────────────────────────────────────────────
     @Override
-    @Async("emailTaskExecutor")
     public void sendBackerReceiptEmail(String toEmail, String backerName, String projectTitle, Long projectId,
+                                       Long donationId, Double amount, String transactionId, String rewardTierTitle,
+                                       LocalDateTime paidAt) {
+        queueService.enqueue(EMAIL_QUEUE, "BACKER_RECEIPT",
+                new BackerReceiptPayload(toEmail, backerName, projectTitle, projectId, donationId, amount,
+                        transactionId, rewardTierTitle, paidAt),
+                () -> sendBackerReceiptEmailNow(toEmail, backerName, projectTitle, projectId, donationId, amount,
+                        transactionId, rewardTierTitle, paidAt));
+    }
+
+    public void sendBackerReceiptEmailNow(String toEmail, String backerName, String projectTitle, Long projectId,
                                        Long donationId, Double amount, String transactionId, String rewardTierTitle,
                                        LocalDateTime paidAt) {
         String safeName = nullSafe(backerName, "there");
@@ -269,8 +336,10 @@ public class EmailServiceImpl implements EmailService {
             mailSender.send(mimeMessage);
             log.info("Sent '{}' email to {}{}", templateName, to, attachmentBytes != null ? " with attachment" : "");
         } catch (MessagingException | UnsupportedEncodingException e) {
-            // Rethrown unchecked so AsyncConfig's AsyncUncaughtExceptionHandler logs the
-            // real SMTP/template error instead of it being silently swallowed.
+            // Rethrown unchecked so it reaches whichever caller invoked this "Now"
+            // method (the worker's dead-letter handling, or — on a Redis-down
+            // fallback — gets logged by the fallback executor) instead of being
+            // silently swallowed.
             throw new IllegalStateException("Failed to send '" + templateName + "' email to " + to, e);
         }
     }
