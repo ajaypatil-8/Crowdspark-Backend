@@ -43,6 +43,7 @@ import org.springframework.web.server.ResponseStatusException;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.time.LocalDateTime;
 
 @Slf4j
@@ -460,8 +461,15 @@ public class PaymentServiceImpl implements PaymentService {
             Mac mac = Mac.getInstance("HmacSHA256");
             mac.init(new SecretKeySpec(razorpayKeySecret.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
             byte[] hash = mac.doFinal(payload.getBytes(StandardCharsets.UTF_8));
-            String generated = new String(Hex.encodeHex(hash));
-            return generated.equals(receivedSignature);
+            // AUDIT FIX: was generated.equals(receivedSignature) — a plain
+            // String/char-by-char comparison short-circuits on the first
+            // mismatching character, so the time it takes leaks how many
+            // leading hex characters an attacker guessed correctly (a classic
+            // HMAC timing side-channel). MessageDigest.isEqual runs in
+            // constant time regardless of where the two byte arrays first
+            // differ, so it doesn't leak that information.
+            byte[] receivedBytes = Hex.decodeHex(receivedSignature.toCharArray());
+            return MessageDigest.isEqual(hash, receivedBytes);
         } catch (Exception e) {
             log.error("Signature verification error: {}", e.getMessage());
             return false;
@@ -480,8 +488,11 @@ public class PaymentServiceImpl implements PaymentService {
             Mac mac = Mac.getInstance("HmacSHA256");
             mac.init(new SecretKeySpec(razorpayWebhookSecret.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
             byte[] hash = mac.doFinal(rawBody.getBytes(StandardCharsets.UTF_8));
-            String generated = new String(Hex.encodeHex(hash));
-            return generated.equals(receivedSignature);
+            // AUDIT FIX: same constant-time comparison fix as verifySignature()
+            // above — see that comment for why plain String.equals() is a
+            // timing side-channel here.
+            byte[] receivedBytes = Hex.decodeHex(receivedSignature.toCharArray());
+            return MessageDigest.isEqual(hash, receivedBytes);
         } catch (Exception e) {
             log.error("Webhook signature verification error: {}", e.getMessage());
             return false;

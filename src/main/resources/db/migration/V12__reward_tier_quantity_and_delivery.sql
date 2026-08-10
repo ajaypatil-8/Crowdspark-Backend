@@ -25,6 +25,13 @@ UPDATE reward_tiers
 SET quantity_available = limited_quantity
 WHERE limited_quantity IS NOT NULL AND quantity_available IS NULL;
 
+-- AUDIT FIX: Postgres has no "ADD CONSTRAINT IF NOT EXISTS", so a bare ADD
+-- CONSTRAINT fails with "constraint already exists" on any database where
+-- this check was already added some other way (same class of issue as the
+-- reward_claims table in V6 — this constraint can already be present from
+-- earlier, pre-Flyway schema work). DROP...IF EXISTS then ADD mirrors the
+-- pattern V9 already uses for users_account_status_check.
+ALTER TABLE reward_tiers DROP CONSTRAINT IF EXISTS chk_reward_tier_quantity_non_negative;
 ALTER TABLE reward_tiers
     ADD CONSTRAINT chk_reward_tier_quantity_non_negative
     CHECK (quantity_available IS NULL OR quantity_available >= 0);

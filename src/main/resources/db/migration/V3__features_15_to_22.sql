@@ -143,8 +143,15 @@ WHERE search_vector IS NULL;
 -- ────────────────────────────────────────────────────────────────────────────
 CREATE INDEX IF NOT EXISTS idx_donations_project_id
     ON donations (project_id);
-CREATE INDEX IF NOT EXISTS idx_notifications_user_id
-    ON notifications (user_id, created_at DESC);
+-- AUDIT FIX: this referenced notifications.user_id, which does not exist —
+-- the FK column on this table is actually named recipient_id (see the
+-- Notification entity's @JoinColumn). Postgres throws
+-- "column \"user_id\" does not exist" here, which aborts this migration's
+-- transaction and blocks every migration after it (V4-V13 never run) on
+-- ANY fresh database — Docker, CI, or a new dev machine. Fixed to the real
+-- column name and given a name that matches it.
+CREATE INDEX IF NOT EXISTS idx_notifications_recipient_id
+    ON notifications (recipient_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_project_media_project_id
     ON project_media (project_id);
 CREATE INDEX IF NOT EXISTS idx_projects_creator_id

@@ -35,6 +35,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.validation.annotation.Validated;
 import org.apache.commons.codec.digest.DigestUtils;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -59,6 +60,16 @@ public class AuthController {
     private final EmailService emailService;
     private final OtpRepository otpRepository;
     private final PasswordEncoder passwordEncoder;
+
+    // AUDIT FIX: these two email links were built from a literal
+    // "http://localhost:3000" string instead of the configured frontend
+    // URL — every other place in the codebase that needs this value
+    // (SecurityConfig, CorsConfig, EmailServiceImpl, OAuth2SuccessHandler)
+    // already injects it exactly this way. In any deployed environment
+    // (FRONTEND_URL env var set to the real domain), the verify-email and
+    // reset-password emails were sending users to a dead localhost link.
+    @Value("${app.frontend.url:http://localhost:3000}")
+    private String frontendUrl;
 
     @Operation(summary = "Register a new user",
                description = "Creates a new backer account. Email verification required before some features unlock.")
@@ -245,7 +256,7 @@ public class AuthController {
                 .email(user.getEmail()).otp(token)
                 .expiryTime(LocalDateTime.now().plusHours(24)).build();
         otpRepository.save(record);
-        String verifyLink = "http://localhost:3000/verify-email?token=" + token + "&email=" + user.getEmail();
+        String verifyLink = frontendUrl + "/verify-email?token=" + token + "&email=" + user.getEmail();
         emailService.sendSimpleEmail(user.getEmail(), "Verify your CrowdSpark email",
                 "Hi " + user.getName() + ",\n\nVerify here:\n\n" + verifyLink + "\n\nExpires in 24 hours.\n\nTeam CrowdSpark");
         logger.info("Verification email sent to userId={}", user.getId());
@@ -272,7 +283,7 @@ public class AuthController {
                         .email(email.trim()).otp(token)
                         .expiryTime(LocalDateTime.now().plusHours(1)).build();
                 otpRepository.save(record);
-                String resetLink = "http://localhost:3000/reset-password?token=" + token + "&email=" + email.trim();
+                String resetLink = frontendUrl + "/reset-password?token=" + token + "&email=" + email.trim();
                 emailService.sendSimpleEmail(email.trim(), "Reset your CrowdSpark password",
                         "Click to reset:\n\n" + resetLink + "\n\nExpires in 1 hour.\n\nTeam CrowdSpark");
                 logger.info("Password reset email requested for email={}", email.trim());
