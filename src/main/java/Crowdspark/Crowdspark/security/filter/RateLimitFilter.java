@@ -71,6 +71,14 @@ public class RateLimitFilter extends OncePerRequestFilter {
     @Value("${rate-limit.totp-verify.window-seconds:300}")
     private int totpVerifyWindow;
 
+    // DEPLOYMENT FIX (Render): see the Javadoc on extractClientIp() below for
+    // why this exists. Defaults to false so local/Docker-Compose/self-hosted
+    // behavior is completely unchanged; set APP_TRUST_PROXY_HEADERS=true only
+    // where the platform itself guarantees the app can't be reached except
+    // through its proxy (this is true on Render).
+    @Value("${app.trust-proxy-headers:false}")
+    private boolean trustProxyHeaders;
+
     // ── Endpoint → RateLimit map ──────────────────────────────────────────────
     // Built lazily after @Value injection is complete
     private Map<String, RateLimit> limits;
@@ -176,10 +184,27 @@ public class RateLimitFilter extends OncePerRequestFilter {
      * saw -- not attacker-controllable) being a private/loopback address
      * indicates. A direct connection from the public internet always uses
      * getRemoteAddr() instead, no matter what headers it sent.
+     *
+     * DEPLOYMENT FIX (Render): the check above assumes "our reverse proxy"
+     * always shows up as a private RFC1918 address, which is true for
+     * Nginx/Docker Compose/a K8s ingress on our own network, but NOT true on
+     * Render. Render's own docs confirm the app only ever sees Render's edge
+     * proxy address as the direct peer (e.g. 147.75.x.x) -- a real address,
+     * not 10.x/192.168.x/172.16-31.x -- so isTrustedProxyAddress() would
+     * always return false there, X-Forwarded-For would never be trusted,
+     * and every user behind Render's edge would collapse onto whatever
+     * address Render's proxy happens to present, breaking per-user rate
+     * limiting (either everyone shares one bucket, or the "IP" is
+     * inconsistent across requests). Unlike a self-hosted box, this is safe
+     * to work around unconditionally on Render specifically: Render's proxy
+     * is the *only* way to reach the app at all (its public port is not
+     * directly internet-routable), so there's no scenario where an attacker
+     * bypasses it to spoof these headers directly -- hence
+     * app.trust-proxy-headers, set only in the Render environment.
      */
     private String extractClientIp(HttpServletRequest request) {
         String directAddr = request.getRemoteAddr();
-        if (!isTrustedProxyAddress(directAddr)) {
+        if (!trustProxyHeaders && !isTrustedProxyAddress(directAddr)) {
             return directAddr;
         }
         String xff = request.getHeader("X-Forwarded-For");

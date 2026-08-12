@@ -36,7 +36,20 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends curl \
     && rm -rf /var/lib/apt/lists/*
 
-RUN groupadd --system spring && useradd --system --gid spring spring
+
+# DEPLOYMENT FIX (Render): Render's "Secret Files" feature (used below for
+# firebase-service-account.json -- see FirebaseConfig / the Render deployment
+# notes) mounts files at /etc/secrets/<name> owned by GID 1000. Render's own
+# docs warn that a container running as a different, unrelated group will get
+# a permission-denied reading them. `groupadd --system spring` alone gives
+# this user its own auto-assigned system GID (not 1000), so it would hit
+# exactly that. Ensuring GID 1000 exists and adding the app user to it as a
+# supplementary group (on top of its own "spring" primary group) fixes this
+# for Render while changing nothing for local/Compose use, where no secret
+# file is mounted and this extra group membership is simply unused.
+RUN groupadd --system spring \
+    && (getent group 1000 || groupadd -g 1000 rendersecrets) \
+    && useradd --system --gid spring --groups 1000 spring
 COPY --from=build /build/app.jar ./app.jar
 RUN chown spring:spring app.jar
 USER spring
