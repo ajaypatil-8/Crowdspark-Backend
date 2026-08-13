@@ -1,37 +1,10 @@
-// src/main/java/Crowdspark/Crowdspark/config/AppSecretsProperties.java
-// Feature #34 — Secrets management
-//
-// Binds to the app.secrets.* properties in application.properties (each of
-// which is just an alias for an existing ${ENV_VAR} already used elsewhere —
-// see that file for the cross-references). @Validated is what actually makes
-// Spring run the constraints below during startup binding; without it these
-// annotations would be inert.
-//
-// The point: turn "the app boots fine, then some unrelated feature mysteriously
-// fails/crashes the first time it's used, days or weeks later" into "the app
-// refuses to start at all, immediately, with a specific message telling you
-// exactly which environment variable is missing and why it matters." Every
-// message below is deliberately specific about the user-facing consequence,
-// not just "must not be blank".
-//
-// Doesn't replace the existing @Value("${jwt.secret}") etc. injections
-// scattered through the codebase (SecurityConfig, JwtUtil, PaymentServiceImpl,
-// ...) — those still read the SAME underlying environment variables directly
-// and keep working exactly as before. This class exists purely to validate,
-// not to become the new way everything reads these values; that would have
-// meant touching every one of those call sites, a much larger and riskier
-// change than what this feature actually calls for.
-
 package Crowdspark.Crowdspark.config;
-
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
-import org.springframework.stereotype.Component;
 import org.springframework.validation.annotation.Validated;
 
-@Component
 @ConfigurationProperties(prefix = "app.secrets")
 @Validated
 @Data
