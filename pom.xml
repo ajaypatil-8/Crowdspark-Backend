@@ -208,13 +208,6 @@
 		</dependency>
 
 
-
-		<!-- pom.xml — add right after your existing spring-boot-starter-mail dependency -->
-		<dependency>
-			<groupId>org.springframework.boot</groupId>
-			<artifactId>spring-boot-starter-mail</artifactId>
-		</dependency>
-
 		<!-- Feature #9: HTML email templates, rendered via Thymeleaf and sent through
              the JavaMailSender already provided by spring-boot-starter-mail above. -->
 		<dependency>
