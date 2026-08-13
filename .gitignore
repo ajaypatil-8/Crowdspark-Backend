@@ -6,7 +6,6 @@ target/
 
 # Spring Boot config (SECRETS)
 application.yml
-application.properties
 application-dev.yml
 application-prod.yml
 application-local.yml
