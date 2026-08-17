@@ -1,17 +1,3 @@
-// src/main/java/Crowdspark/Crowdspark/service/impl/EmailServiceImpl.java
-// Feature #9 — HTML email templates (Thymeleaf)
-// Feature #10 — sendBackerReceiptEmail also generates a PDF receipt
-// (via PdfReceiptService) and attaches it to the same email.
-// Feature #36 — Async job queue: public methods now enqueue a job onto
-// Redis instead of doing the work themselves. EmailJobWorker (a background
-// consumer, see the queue package) dequeues and calls the "Now" methods
-// below, which hold the EXACT SAME logic these methods used to run directly
-// under @Async — nothing about template rendering, PDF generation, or SMTP
-// sending changed, only when/where it runs. @Async is gone from the public
-// methods since enqueueing is a fast Redis push, not slow SMTP I/O; the
-// "Now" methods don't need it either since they're already invoked from a
-// background thread (the worker, or the Redis-down fallback executor).
-
 package Crowdspark.Crowdspark.service.impl;
 
 import Crowdspark.Crowdspark.queue.RedisQueueService;
@@ -48,14 +34,15 @@ public class EmailServiceImpl implements EmailService {
     private final RedisQueueService queueService;       // ← Feature #36
 
     public EmailServiceImpl(JavaMailSender mailSender, TemplateEngine templateEngine,
-                             PdfReceiptService pdfReceiptService, RedisQueueService queueService) {
+                            PdfReceiptService pdfReceiptService, RedisQueueService queueService) {
         this.mailSender = mailSender;
         this.templateEngine = templateEngine;
         this.pdfReceiptService = pdfReceiptService;
         this.queueService = queueService;
     }
 
-    @Value("${spring.mail.username}")
+
+    @Value("${app.mail.from-address}")
     private String fromEmail;
 
     @Value("${app.mail.from-name:CrowdSpark}")
@@ -64,28 +51,21 @@ public class EmailServiceImpl implements EmailService {
     @Value("${app.frontend.url:http://localhost:3000}")
     private String frontendUrl;
 
-    // AUDIT FIX: pinned to Locale.ENGLISH for consistency with the same fix in
-    // PdfReceiptServiceImpl — an HTML email can render any script fine, so this
-    // was never a crash risk here, but a receipt should show a predictable
-    // date regardless of the server JVM's default locale.
+
     private static final DateTimeFormatter RECEIPT_DATE_FORMAT =
             DateTimeFormatter.ofPattern("d MMMM yyyy, h:mm a", Locale.ENGLISH);
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Feature #36 payload records — one per job type. Kept as nested records
-    // (not a flat Map<String,Object>) so Jackson deserializes each field into
-    // its correct declared type automatically, including LocalDateTime.
-    // ─────────────────────────────────────────────────────────────────────────
+
     public record OtpEmailPayload(String toEmail, String name, String otp, int validityMinutes) {}
     public record SimpleEmailPayload(String toEmail, String subject, String body) {}
     public record WelcomeEmailPayload(String toEmail, String name) {}
     public record CampaignApprovedPayload(String toEmail, String creatorName, String projectTitle, Long projectId) {}
     public record CampaignRejectedPayload(String toEmail, String creatorName, String projectTitle, String reason) {}
     public record CampaignFundedPayload(String toEmail, String creatorName, String projectTitle, Long projectId,
-                                         Double raisedAmount, Double goalAmount) {}
+                                        Double raisedAmount, Double goalAmount) {}
     public record BackerReceiptPayload(String toEmail, String backerName, String projectTitle, Long projectId,
-                                        Long donationId, Double amount, String transactionId,
-                                        String rewardTierTitle, LocalDateTime paidAt) {}
+                                       Long donationId, Double amount, String transactionId,
+                                       String rewardTierTitle, LocalDateTime paidAt) {}
 
     // ─────────────────────────────────────────────────────────────────────────
     // OTP — numeric code (creator upgrade / KYC re-verification)
@@ -127,7 +107,11 @@ public class EmailServiceImpl implements EmailService {
         message.setTo(toEmail);
         message.setSubject(subject);
         message.setText(body);
+
+        message.setFrom(fromEmail);
         mailSender.send(message);
+
+        log.info("Sent '{}' email to {}", subject, toEmail);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -221,7 +205,7 @@ public class EmailServiceImpl implements EmailService {
     }
 
     public void sendCampaignFundedEmailNow(String toEmail, String creatorName, String projectTitle, Long projectId,
-                                        Double raisedAmount, Double goalAmount) {
+                                           Double raisedAmount, Double goalAmount) {
         String safeName = nullSafe(creatorName, "there");
         double raised = raisedAmount == null ? 0.0 : raisedAmount;
         double goal   = goalAmount   == null ? 0.0 : goalAmount;
@@ -261,8 +245,8 @@ public class EmailServiceImpl implements EmailService {
     }
 
     public void sendBackerReceiptEmailNow(String toEmail, String backerName, String projectTitle, Long projectId,
-                                       Long donationId, Double amount, String transactionId, String rewardTierTitle,
-                                       LocalDateTime paidAt) {
+                                          Long donationId, Double amount, String transactionId, String rewardTierTitle,
+                                          LocalDateTime paidAt) {
         String safeName = nullSafe(backerName, "there");
         String safeTxnId = nullSafe(transactionId, "—");
         String amountFormatted = formatInr(amount == null ? 0.0 : amount);
@@ -336,10 +320,7 @@ public class EmailServiceImpl implements EmailService {
             mailSender.send(mimeMessage);
             log.info("Sent '{}' email to {}{}", templateName, to, attachmentBytes != null ? " with attachment" : "");
         } catch (MessagingException | UnsupportedEncodingException e) {
-            // Rethrown unchecked so it reaches whichever caller invoked this "Now"
-            // method (the worker's dead-letter handling, or — on a Redis-down
-            // fallback — gets logged by the fallback executor) instead of being
-            // silently swallowed.
+
             throw new IllegalStateException("Failed to send '" + templateName + "' email to " + to, e);
         }
     }
