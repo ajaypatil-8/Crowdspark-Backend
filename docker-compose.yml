@@ -85,6 +85,11 @@ services:
       RAZORPAY_WEBHOOK_SECRET: ${RAZORPAY_WEBHOOK_SECRET:-}
       RAZORPAY_ACCOUNT_NUMBER: ${RAZORPAY_ACCOUNT_NUMBER:-}
 
+      # Feature #39 — free tier, no billing risk either way; left unset by
+      # default so AI drafting just degrades to a 503 until you put a real
+      # key in .env (see .env.example). console.groq.com, no credit card.
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+
       # Left pointing at the (now-deleted) classpath default on purpose. The
       # service-account file that used to ship here had a real, live private
       # key committed despite being gitignored — rotate it in the Firebase
