@@ -1,12 +1,15 @@
 // src/main/java/Crowdspark/Crowdspark/controller/AiController.java
 // Feature #39 — AI Campaign Description Generator
-// Home for all Claude-powered creator tools (#39-#48 will add siblings here).
+// Feature #40 — AI-Powered Project Recommendations
+// Home for all Groq-powered creator/backer tools (#41-#48 will add siblings
+// here too).
 
 package Crowdspark.Crowdspark.controller;
 
 import Crowdspark.Crowdspark.dto.ApiResponse;
 import Crowdspark.Crowdspark.dto.GenerateDescriptionRequest;
 import Crowdspark.Crowdspark.dto.GenerateDescriptionResponse;
+import Crowdspark.Crowdspark.dto.RecommendationsResponse;
 import Crowdspark.Crowdspark.entity.User;
 import Crowdspark.Crowdspark.service.AiService;
 import Crowdspark.Crowdspark.service.UserService;
@@ -18,6 +21,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -26,10 +31,10 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/v1/ai")
 @RequiredArgsConstructor
-@Tag(name = "AI Tools", description = "Claude-powered creator assistance")
+@Tag(name = "AI Tools", description = "Groq-powered creator and backer assistance")
 public class AiController {
 
-    private final AiService  aiService;
+    private final AiService   aiService;
     private final UserService userService;
 
     /**
@@ -53,5 +58,43 @@ public class AiController {
         GenerateDescriptionResponse response =
                 aiService.generateCampaignDescription(request, creator.getId());
         return ResponseEntity.ok(ApiResponse.ok("Draft generated", response));
+    }
+
+    /**
+     * GET /api/v1/ai/recommendations
+     * Any authenticated user — up to 6 live campaigns picked and explained
+     * for this specific backer, based on what they've backed, saved,
+     * declared interest in, and recently viewed. Falls back to trending
+     * picks (personalized=false in the response) when there's no signal yet.
+     */
+    @Operation(summary = "Get AI-picked project recommendations",
+            description = "Any authenticated user. Ranks live campaigns using backed/interested "
+                    + "categories and recent views; falls back to trending picks when there's no signal.",
+            security = @SecurityRequirement(name = "bearerAuth"))
+    @GetMapping("/recommendations")
+    public ResponseEntity<ApiResponse<RecommendationsResponse>> getRecommendations(
+            @AuthenticationPrincipal String username) {
+
+        User user = userService.getByUsername(username);
+        return ResponseEntity.ok(ApiResponse.ok(aiService.getRecommendations(user)));
+    }
+
+    /**
+     * POST /api/v1/ai/recently-viewed/{projectId}
+     * Any authenticated user — fire and forget, called by the frontend on
+     * project detail page load (alongside, not instead of, the existing
+     * anonymous analytics view tracker). Feeds getRecommendations() above.
+     */
+    @Operation(summary = "Track a project view for personalization",
+            description = "Called once per page load when the viewer is logged in. Async — returns immediately.",
+            security = @SecurityRequirement(name = "bearerAuth"))
+    @PostMapping("/recently-viewed/{projectId}")
+    public ResponseEntity<Void> trackRecentlyViewed(
+            @PathVariable Long projectId,
+            @AuthenticationPrincipal String username) {
+
+        User user = userService.getByUsername(username);
+        aiService.trackRecentlyViewed(user.getId(), projectId);
+        return ResponseEntity.accepted().build();
     }
 }

@@ -174,11 +174,35 @@ public interface ProjectRepository extends JpaRepository<Project, Long> {
         """,
             nativeQuery = true)
     Page<Project> searchWithFts(
-            @Param("categoryId") Long   categoryId,
-            @Param("keyword")    String keyword,
-            @Param("sort")       String sort,
-            @Param("minGoal")    Double minGoal,
-            @Param("maxGoal")    Double maxGoal,
-            Pageable             pageable
+            @Param("categoryId")  Long   categoryId,
+            @Param("keyword")     String keyword,
+            @Param("sort")        String sort,
+            @Param("minGoal")     Double minGoal,
+            @Param("maxGoal")     Double maxGoal,
+            Pageable              pageable
     );
+
+    // ── Feature #40: AI recommendation candidate pool ───────────────────────
+    // Same reasoning as findTop20ByCreator_IdInAndStatusOrderByCreatedAtDesc
+    // above -- push the category match, the exclusion, and the limit into the
+    // query itself rather than loading every APPROVED project and filtering
+    // in Java. Plain JOIN (not JOIN FETCH) on categories: it's only here to
+    // filter rows, and JOIN FETCH-ing it alongside creator would hit the same
+    // MultipleBagFetchException noted above for two collection fetches.
+    @Query("SELECT DISTINCT p FROM Project p JOIN FETCH p.creator JOIN p.categories c " +
+           "WHERE p.status = :status AND c.name IN :categoryNames AND p.id NOT IN :excludeIds " +
+           "ORDER BY p.createdAt DESC")
+    List<Project> findCandidatesByCategories(@Param("status") ProjectStatus status,
+                                              @Param("categoryNames") List<String> categoryNames,
+                                              @Param("excludeIds") List<Long> excludeIds,
+                                              Pageable pageable);
+
+    // General pool used for cold-start backers (no category signal yet) and to
+    // top up findCandidatesByCategories() when too few category matches exist.
+    @Query("SELECT p FROM Project p JOIN FETCH p.creator " +
+           "WHERE p.status = :status AND p.id NOT IN :excludeIds " +
+           "ORDER BY p.createdAt DESC")
+    List<Project> findRecentCandidates(@Param("status") ProjectStatus status,
+                                        @Param("excludeIds") List<Long> excludeIds,
+                                        Pageable pageable);
 }
