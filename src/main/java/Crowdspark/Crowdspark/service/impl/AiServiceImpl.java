@@ -16,6 +16,8 @@
 
 package Crowdspark.Crowdspark.service.impl;
 
+import Crowdspark.Crowdspark.dto.CampaignScoreRequest;
+import Crowdspark.Crowdspark.dto.CampaignScoreResponse;
 import Crowdspark.Crowdspark.dto.GenerateDescriptionRequest;
 import Crowdspark.Crowdspark.dto.GenerateDescriptionResponse;
 import Crowdspark.Crowdspark.dto.ProjectFeedResponse;
@@ -100,6 +102,9 @@ public class AiServiceImpl implements AiService {
     @Value("${ai.description.daily-limit:25}")
     private int dailyLimit;
 
+    @Value("${ai.success-score.daily-limit:25}")
+    private int successScoreDailyLimit;
+
     private static final DateTimeFormatter DAY_KEY  = DateTimeFormatter.ofPattern("yyyyMMdd");
     private static final double            MIN_GOAL = 1_000;
     private static final double            MAX_GOAL = 100_000_000;
@@ -134,7 +139,7 @@ public class AiServiceImpl implements AiService {
     public GenerateDescriptionResponse generateCampaignDescription(GenerateDescriptionRequest request, Long creatorId) {
 
         requireApiKey();
-        enforceDailyLimit(creatorId);
+        enforceDailyLimit("desc-gen", creatorId, dailyLimit);
 
         String raw  = callGroq(SYSTEM_PROMPT, buildUserPrompt(request), temperature);
         JsonNode json = parseJson(raw);
@@ -400,6 +405,92 @@ public class AiServiceImpl implements AiService {
         return s.length() <= max ? s : s.substring(0, max).trim() + "...";
     }
 
+    // ═════════════════════════════════════════════════════════════════════
+    // Feature #41 — Campaign Success Predictor
+    // ═════════════════════════════════════════════════════════════════════
+
+    private static final String SCORE_SYSTEM_PROMPT = """
+            You are a crowdfunding success analyst for CrowdSpark, a platform for creators in India \
+            (similar to Kickstarter or Indiegogo). All amounts are in Indian Rupees (INR).
+
+            You will be given a creator's draft campaign, plus a few computed stats about it. Assess \
+            how likely this specific campaign is to reach its funding goal, based on factors real \
+            crowdfunding data supports: a clear and specific pitch, a well-structured story that \
+            explains the plan and how funds are used, a goal that is realistic for the scope \
+            described, a reasonable campaign length (roughly 30 to 45 days tends to perform best - \
+            much longer or much shorter tends to hurt), a thumbnail image and ideally a video, and \
+            having reward tiers for backers to choose from.
+
+            Score from 0 to 100. Give honest, specific, constructive feedback - point out real \
+            weaknesses, do not just praise. Base every specific claim only on what you were actually \
+            given (the text and the stats), never invent facts about the campaign.
+
+            Respond with ONLY a single valid JSON object - no markdown code fences, no preamble, no \
+            text outside the JSON. It must have exactly these keys: score (a whole number 0-100), \
+            verdict (a short 2-4 word label like Strong, Promising, Needs Work, or High Risk), \
+            explanation (2-3 plain-text sentences on the overall assessment), and tips (an array of \
+            3-5 short, specific, actionable strings for what to improve, most impactful first - if \
+            the campaign is already strong, tips can be smaller polish suggestions instead of major \
+            fixes).""";
+
+    @Override
+    public CampaignScoreResponse predictCampaignSuccess(CampaignScoreRequest request, Long creatorId) {
+
+        requireApiKey();
+        enforceDailyLimit("success-score", creatorId, successScoreDailyLimit);
+
+        String raw    = callGroq(SCORE_SYSTEM_PROMPT, buildScorePrompt(request), 0.4);
+        JsonNode json = parseJson(raw);
+
+        int    score       = (int) clamp(json.path("score").asInt(50), 0, 100);
+        String verdict     = trim(json.path("verdict").asText(""), 40);
+        String explanation = trim(json.path("explanation").asText(""), 500);
+
+        List<String> tips = new ArrayList<>();
+        if (json.path("tips").isArray()) {
+            for (JsonNode t : json.path("tips")) {
+                String tip = trim(t.asText(""), 200);
+                if (!tip.isBlank()) tips.add(tip);
+                if (tips.size() >= 6) break;
+            }
+        }
+
+        if (verdict.isBlank() || explanation.isBlank()) {
+            log.error("Groq returned unparseable success-score content: {}", raw);
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+                    "AI returned an incomplete response. Please try again.");
+        }
+
+        return CampaignScoreResponse.builder()
+                .score(score)
+                .verdict(verdict)
+                .explanation(explanation)
+                .tips(tips)
+                .model(model)
+                .build();
+    }
+
+    private String buildScorePrompt(CampaignScoreRequest req) {
+        int wordCount = req.getFullDescription().isBlank()
+                ? 0 : req.getFullDescription().trim().split("\\s+").length;
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("Title: ").append(req.getTitle()).append('\n');
+        sb.append("Short pitch: ").append(req.getShortDescription()).append('\n');
+        if (req.getCategory() != null && !req.getCategory().isBlank()) {
+            sb.append("Category: ").append(req.getCategory()).append('\n');
+        }
+        sb.append("Funding goal: INR ").append(String.format("%,.0f", req.getGoalAmount())).append('\n');
+        sb.append("Campaign length: ").append(req.getDurationDays()).append(" days\n");
+        sb.append("Thumbnail uploaded: ").append(req.isHasThumbnail() ? "yes" : "no").append('\n');
+        sb.append("Video uploaded: ").append(req.isHasVideo() ? "yes" : "no").append('\n');
+        sb.append("Total media files: ").append(req.getMediaCount()).append('\n');
+        sb.append("Reward tiers offered: ").append(req.getRewardTierCount()).append('\n');
+        sb.append("Story length: ").append(wordCount).append(" words\n");
+        sb.append("\nFull story text:\n").append(req.getFullDescription());
+        return sb.toString();
+    }
+
     // ── Recently-viewed tracking (Redis-only, feeds getRecommendations) ────
     // Deliberately separate from AnalyticsServiceImpl.recordView: that one is
     // anonymous-friendly and privacy-preserving by design (SHA-256 visitor
@@ -528,20 +619,21 @@ public class AiServiceImpl implements AiService {
         return Math.max(min, Math.min(max, v));
     }
 
-    // ── Per-creator daily rate limit (Feature #39 only -- #40 is protected
-    // by its own 6h cache instead, since it's fetched passively rather than
-    // triggered by a repeated manual action) ───────────────────────────────
+    // ── Per-creator daily rate limits, one counter per manually-triggered
+    // feature (#40's recommendations are protected by its own 6h cache
+    // instead, since it's fetched passively rather than triggered by a
+    // repeated manual action) ───────────────────────────────────────────────
 
-    private void enforceDailyLimit(Long creatorId) {
-        String key = "ai:desc-gen:" + creatorId + ":" + LocalDate.now().format(DAY_KEY);
+    private void enforceDailyLimit(String featureKey, Long creatorId, int limit) {
+        String key = "ai:" + featureKey + ":" + creatorId + ":" + LocalDate.now().format(DAY_KEY);
         try {
             Long count = redisTemplate.opsForValue().increment(key);
             if (count != null && count == 1) {
                 redisTemplate.expire(key, 26, TimeUnit.HOURS);
             }
-            if (count != null && count > dailyLimit) {
+            if (count != null && count > limit) {
                 throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS,
-                        "You've reached today's limit of " + dailyLimit + " AI generations. Try again tomorrow.");
+                        "You've reached today's limit of " + limit + " for this AI feature. Try again tomorrow.");
             }
         } catch (ResponseStatusException e) {
             throw e;

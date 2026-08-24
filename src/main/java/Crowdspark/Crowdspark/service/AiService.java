@@ -1,11 +1,14 @@
 // src/main/java/Crowdspark/Crowdspark/service/AiService.java
 // Feature #39 — AI Campaign Description Generator
 // Feature #40 — AI-Powered Project Recommendations
-// (this interface will keep growing with #41-#48 as the other free-AI
+// Feature #41 — AI Campaign Success Predictor
+// (this interface will keep growing with #42-#48 as the other free-AI
 // creator/backer tools land)
 
 package Crowdspark.Crowdspark.service;
 
+import Crowdspark.Crowdspark.dto.CampaignScoreRequest;
+import Crowdspark.Crowdspark.dto.CampaignScoreResponse;
 import Crowdspark.Crowdspark.dto.GenerateDescriptionRequest;
 import Crowdspark.Crowdspark.dto.GenerateDescriptionResponse;
 import Crowdspark.Crowdspark.dto.RecommendationsResponse;
@@ -36,4 +39,17 @@ public interface AiService {
      * forget -- failures here should never affect the page the user is on.
      */
     void trackRecentlyViewed(Long userId, Long projectId);
+
+    /**
+     * Scores a draft campaign 0-100 on likely funding success, with an
+     * honest explanation and 3-5 concrete improvement tips. Stateless --
+     * evaluates whatever draft data the wizard currently holds, nothing is
+     * read from or written to the database.
+     *
+     * @param request   the assembled draft (title, story, goal, media/reward
+     *                  counts, etc.) -- see CampaignScoreRequest
+     * @param creatorId used only to key the per-creator daily usage limit
+     */
+    CampaignScoreResponse predictCampaignSuccess(CampaignScoreRequest request, Long creatorId);
 }
+

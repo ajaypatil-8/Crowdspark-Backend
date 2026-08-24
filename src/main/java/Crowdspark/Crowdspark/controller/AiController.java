@@ -1,12 +1,15 @@
 // src/main/java/Crowdspark/Crowdspark/controller/AiController.java
 // Feature #39 — AI Campaign Description Generator
 // Feature #40 — AI-Powered Project Recommendations
-// Home for all Groq-powered creator/backer tools (#41-#48 will add siblings
+// Feature #41 — AI Campaign Success Predictor
+// Home for all Groq-powered creator/backer tools (#42-#48 will add siblings
 // here too).
 
 package Crowdspark.Crowdspark.controller;
 
 import Crowdspark.Crowdspark.dto.ApiResponse;
+import Crowdspark.Crowdspark.dto.CampaignScoreRequest;
+import Crowdspark.Crowdspark.dto.CampaignScoreResponse;
 import Crowdspark.Crowdspark.dto.GenerateDescriptionRequest;
 import Crowdspark.Crowdspark.dto.GenerateDescriptionResponse;
 import Crowdspark.Crowdspark.dto.RecommendationsResponse;
@@ -96,5 +99,27 @@ public class AiController {
         User user = userService.getByUsername(username);
         aiService.trackRecentlyViewed(user.getId(), projectId);
         return ResponseEntity.accepted().build();
+    }
+
+    /**
+     * POST /api/v1/ai/success-score
+     * Creator only — scores a draft campaign 0-100 on likely funding
+     * success, with an honest explanation and improvement tips. Meant for
+     * Step 5 (Review) of the campaign wizard, before submission. Stateless,
+     * same as campaign-description — nothing here touches the database.
+     */
+    @Operation(summary = "Score a draft campaign's likely success",
+            description = "Creator only. Scores 0-100 with an explanation and 3-5 improvement tips, "
+                    + "based on the draft's story, goal, media, and reward tiers.",
+            security = @SecurityRequirement(name = "bearerAuth"))
+    @PreAuthorize("hasRole('CREATOR')")
+    @PostMapping("/success-score")
+    public ResponseEntity<ApiResponse<CampaignScoreResponse>> predictSuccess(
+            @Valid @RequestBody CampaignScoreRequest request,
+            @AuthenticationPrincipal String username) {
+
+        User creator = userService.getByUsername(username);
+        CampaignScoreResponse response = aiService.predictCampaignSuccess(request, creator.getId());
+        return ResponseEntity.ok(ApiResponse.ok("Score generated", response));
     }
 }
