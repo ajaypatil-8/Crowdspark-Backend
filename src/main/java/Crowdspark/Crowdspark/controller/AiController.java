@@ -2,7 +2,8 @@
 // Feature #39 — AI Campaign Description Generator
 // Feature #40 — AI-Powered Project Recommendations
 // Feature #41 — AI Campaign Success Predictor
-// Home for all Groq-powered creator/backer tools (#42-#48 will add siblings
+// Feature #42 — AI Support Chatbot
+// Home for all Groq-powered creator/backer tools (#43-#48 will add siblings
 // here too).
 
 package Crowdspark.Crowdspark.controller;
@@ -13,6 +14,8 @@ import Crowdspark.Crowdspark.dto.CampaignScoreResponse;
 import Crowdspark.Crowdspark.dto.GenerateDescriptionRequest;
 import Crowdspark.Crowdspark.dto.GenerateDescriptionResponse;
 import Crowdspark.Crowdspark.dto.RecommendationsResponse;
+import Crowdspark.Crowdspark.dto.SupportChatRequest;
+import Crowdspark.Crowdspark.dto.SupportChatResponse;
 import Crowdspark.Crowdspark.entity.User;
 import Crowdspark.Crowdspark.service.AiService;
 import Crowdspark.Crowdspark.service.UserService;
@@ -121,5 +124,24 @@ public class AiController {
         User creator = userService.getByUsername(username);
         CampaignScoreResponse response = aiService.predictCampaignSuccess(request, creator.getId());
         return ResponseEntity.ok(ApiResponse.ok("Score generated", response));
+    }
+
+    /**
+     * POST /api/v1/ai/support-chat
+     * Public — no login required, unlike every other endpoint in this
+     * controller. Also added to SecurityConfig's permitAll list (omitting
+     * @PreAuthorize alone is not enough here; the app's default is
+     * .anyRequest().authenticated(), so this needs an explicit exception).
+     * IP-rate-limited via RateLimitFilter instead of a per-user cap, since
+     * anonymous callers have no user id to key on.
+     */
+    @Operation(summary = "Send a message to the support chatbot",
+            description = "Public. Stateless — send the full conversation each turn, get the next "
+                    + "assistant reply back. escalate=true means the frontend should offer a human.")
+    @PostMapping("/support-chat")
+    public ResponseEntity<ApiResponse<SupportChatResponse>> supportChat(
+            @Valid @RequestBody SupportChatRequest request) {
+
+        return ResponseEntity.ok(ApiResponse.ok(aiService.handleSupportChat(request)));
     }
 }

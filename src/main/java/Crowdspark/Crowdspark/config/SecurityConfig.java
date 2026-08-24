@@ -197,6 +197,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/v1/projects/*/reviews/summary").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/projects/*/milestones").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/v1/projects/*/view").permitAll()
+                        // Feature #42 — public support chatbot; no login required to ask a question
+                        .requestMatchers(HttpMethod.POST, "/api/v1/ai/support-chat").permitAll()
                         .requestMatchers("/auth/totp/verify-login").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/users/*/followers").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/users/*/following").permitAll()

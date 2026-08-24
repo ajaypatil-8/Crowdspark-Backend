@@ -71,6 +71,16 @@ public class RateLimitFilter extends OncePerRequestFilter {
     @Value("${rate-limit.totp-verify.window-seconds:300}")
     private int totpVerifyWindow;
 
+    // Feature #42: public, unauthenticated chatbot -- this is the only
+    // reason this filter has anything to do with it. Every other AI
+    // endpoint requires a login and gets its own per-creator daily Redis
+    // counter inside AiServiceImpl instead; this one has no user id to key
+    // on, so it leans on the same IP-based mechanism as everything else here.
+    @Value("${rate-limit.support-chat.max-requests:20}")
+    private int supportChatMax;
+    @Value("${rate-limit.support-chat.window-seconds:3600}")
+    private int supportChatWindow;
+
     // DEPLOYMENT FIX (Render): see the Javadoc on extractClientIp() below for
     // why this exists. Defaults to false so local/Docker-Compose/self-hosted
     // behavior is completely unchanged; set APP_TRUST_PROXY_HEADERS=true only
@@ -98,6 +108,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
             limits.put("/api/v1/creator/send-otp",   new RateLimit("otp",          otpMax,          otpWindow));
             limits.put("/api/v1/creator/verify-otp", new RateLimit("verify-otp",   verifyOtpMax,    verifyOtpWindow));
             limits.put("/auth/totp/verify-login",    new RateLimit("totp-verify", totpVerifyMax,   totpVerifyWindow));
+            limits.put("/api/v1/ai/support-chat",    new RateLimit("support-chat", supportChatMax, supportChatWindow));
         }
         return limits;
     }

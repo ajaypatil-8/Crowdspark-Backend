@@ -2,7 +2,8 @@
 // Feature #39 — AI Campaign Description Generator
 // Feature #40 — AI-Powered Project Recommendations
 // Feature #41 — AI Campaign Success Predictor
-// (this interface will keep growing with #42-#48 as the other free-AI
+// Feature #42 — AI Support Chatbot
+// (this interface will keep growing with #43-#48 as the other free-AI
 // creator/backer tools land)
 
 package Crowdspark.Crowdspark.service;
@@ -12,6 +13,8 @@ import Crowdspark.Crowdspark.dto.CampaignScoreResponse;
 import Crowdspark.Crowdspark.dto.GenerateDescriptionRequest;
 import Crowdspark.Crowdspark.dto.GenerateDescriptionResponse;
 import Crowdspark.Crowdspark.dto.RecommendationsResponse;
+import Crowdspark.Crowdspark.dto.SupportChatRequest;
+import Crowdspark.Crowdspark.dto.SupportChatResponse;
 import Crowdspark.Crowdspark.entity.User;
 
 public interface AiService {
@@ -51,5 +54,13 @@ public interface AiService {
      * @param creatorId used only to key the per-creator daily usage limit
      */
     CampaignScoreResponse predictCampaignSuccess(CampaignScoreRequest request, Long creatorId);
+
+    /**
+     * One turn of the public support chat. Stateless -- the frontend holds
+     * conversation history and resends it each turn; nothing is persisted
+     * server-side. Public/anonymous-friendly (no user parameter), protected
+     * by IP-based rate limiting in RateLimitFilter instead of a per-user cap.
+     */
+    SupportChatResponse handleSupportChat(SupportChatRequest request);
 }
 

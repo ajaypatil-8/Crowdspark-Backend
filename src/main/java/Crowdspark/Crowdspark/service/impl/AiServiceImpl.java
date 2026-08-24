@@ -18,11 +18,14 @@ package Crowdspark.Crowdspark.service.impl;
 
 import Crowdspark.Crowdspark.dto.CampaignScoreRequest;
 import Crowdspark.Crowdspark.dto.CampaignScoreResponse;
+import Crowdspark.Crowdspark.dto.ChatMessage;
 import Crowdspark.Crowdspark.dto.GenerateDescriptionRequest;
 import Crowdspark.Crowdspark.dto.GenerateDescriptionResponse;
 import Crowdspark.Crowdspark.dto.ProjectFeedResponse;
 import Crowdspark.Crowdspark.dto.RecommendationsResponse;
 import Crowdspark.Crowdspark.dto.RecommendedProjectResponse;
+import Crowdspark.Crowdspark.dto.SupportChatRequest;
+import Crowdspark.Crowdspark.dto.SupportChatResponse;
 import Crowdspark.Crowdspark.entity.Category;
 import Crowdspark.Crowdspark.entity.Donation;
 import Crowdspark.Crowdspark.entity.Project;
@@ -491,6 +494,85 @@ public class AiServiceImpl implements AiService {
         return sb.toString();
     }
 
+    // ═════════════════════════════════════════════════════════════════════
+    // Feature #42 — Support Chatbot
+    // ═════════════════════════════════════════════════════════════════════
+    // Public/anonymous-friendly (no @PreAuthorize, added to SecurityConfig's
+    // permitAll list) -- unlike #39/#41 this needs to work for visitors who
+    // haven't signed up yet. Rate limiting is therefore IP-based via
+    // RateLimitFilter (see the new "/api/v1/ai/support-chat" entry there)
+    // rather than the per-creator Redis counters used elsewhere in this file
+    // -- there's no user id to key on for an anonymous caller.
+
+    private static final String SUPPORT_SYSTEM_PROMPT = """
+            You are the support assistant for CrowdSpark, a crowdfunding platform for creators in \
+            India (similar to Kickstarter or Indiegogo). All amounts are in Indian Rupees (INR).
+
+            What you know about how CrowdSpark works:
+            - All-or-nothing funding: if a campaign does not reach its goal by its deadline, every \
+              backer is automatically refunded and the creator receives nothing.
+            - Backers pay through Razorpay in INR, can optionally choose a reward tier when backing, \
+              and get an email receipt.
+            - Creators must complete identity verification (KYC) before launching a campaign, and \
+              every campaign is reviewed by an admin before it goes live, which usually takes 24 to \
+              48 hours.
+            - CrowdSpark takes a platform fee out of funds paid to creators after a successful \
+              campaign.
+            - Backers can save projects to a personal watchlist and follow creators they like. Only \
+              backers who actually funded a project can leave a review on it.
+            - Account settings include two-factor authentication and the option to permanently delete \
+              an account and its data.
+
+            What you must not do:
+            - Never claim to know details about a specific user's account, payment, campaign status, \
+              or refund - you have no access to that data. If someone asks about their own order, \
+              refund, or account, say you cannot look that up and that they should contact support \
+              with their account email or order details.
+            - Never invent a policy, fee, or number you were not told here. If you are not sure, say \
+              so honestly instead of guessing.
+            - Only discuss CrowdSpark. If someone asks something unrelated to the platform, politely \
+              say that is outside what you can help with here.
+
+            Keep replies short and conversational - a few sentences, not an essay, unless the \
+            question genuinely needs more.
+
+            Respond with ONLY a single valid JSON object - no markdown code fences, no preamble, no \
+            text outside the JSON. It must have exactly these keys: reply (your response as plain \
+            text, no markdown), and escalate (true if this needs a human - because you do not know \
+            the answer, it needs account-specific lookup, or the user asked for a person - false \
+            otherwise).""";
+
+    private static final int SUPPORT_CHAT_HISTORY_WINDOW = 12;
+
+    @Override
+    public SupportChatResponse handleSupportChat(SupportChatRequest request) {
+
+        requireApiKey();
+
+        List<ChatMessage> all    = request.getMessages();
+        List<ChatMessage> recent = all.size() > SUPPORT_CHAT_HISTORY_WINDOW
+                ? all.subList(all.size() - SUPPORT_CHAT_HISTORY_WINDOW, all.size())
+                : all;
+
+        List<Map<String, String>> conversation = recent.stream()
+                .map(m -> Map.of("role", m.getRole(), "content", m.getContent()))
+                .collect(Collectors.toList());
+
+        String   raw  = callGroq(SUPPORT_SYSTEM_PROMPT, conversation, 0.5);
+        JsonNode json = parseJson(raw);
+
+        String  reply    = trim(json.path("reply").asText(""), 1500);
+        boolean escalate = json.path("escalate").asBoolean(false);
+
+        if (reply.isBlank()) {
+            log.error("Groq returned unparseable support-chat content: {}", raw);
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+                    "AI returned an incomplete response. Please try again.");
+        }
+
+        return SupportChatResponse.builder().reply(reply).escalate(escalate).build();
+    }
+
     // ── Recently-viewed tracking (Redis-only, feeds getRecommendations) ────
     // Deliberately separate from AnalyticsServiceImpl.recordView: that one is
     // anonymous-friendly and privacy-preserving by design (SHA-256 visitor
@@ -536,20 +618,33 @@ public class AiServiceImpl implements AiService {
     }
 
     /** Groq/OpenAI-compatible Chat Completions call. Returns the assistant's
-     *  raw text content (expected to be a JSON string per both system prompts
-     *  above -- response_format=json_object guarantees syntactically valid
-     *  JSON, not that it matches our schema, hence parseJson()'s defensive
-     *  field-by-field reads downstream). */
+     *  raw text content (expected to be a JSON string per every system
+     *  prompt in this file -- response_format=json_object guarantees
+     *  syntactically valid JSON, not that it matches our schema, hence
+     *  parseJson()'s defensive field-by-field reads downstream). */
     private String callGroq(String systemPrompt, String userPrompt, double temp) {
+        return callGroqRaw(List.of(
+                Map.of("role", "system", "content", systemPrompt),
+                Map.of("role", "user", "content", userPrompt)
+        ), temp);
+    }
+
+    /** Multi-turn variant for Feature #42's chatbot -- same call, just with
+     *  a full conversation instead of one user turn. */
+    private String callGroq(String systemPrompt, List<Map<String, String>> conversation, double temp) {
+        List<Map<String, String>> messages = new ArrayList<>();
+        messages.add(Map.of("role", "system", "content", systemPrompt));
+        messages.addAll(conversation);
+        return callGroqRaw(messages, temp);
+    }
+
+    private String callGroqRaw(List<Map<String, String>> messages, double temp) {
         Map<String, Object> body = new HashMap<>();
         body.put("model", model);
         body.put("max_completion_tokens", maxTokens); // Groq's param name -- NOT max_tokens
         body.put("temperature", temp);
         body.put("response_format", Map.of("type", "json_object"));
-        body.put("messages", List.of(
-                Map.of("role", "system", "content", systemPrompt),
-                Map.of("role", "user", "content", userPrompt)
-        ));
+        body.put("messages", messages);
 
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
