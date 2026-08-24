@@ -1,18 +1,21 @@
 // src/main/java/Crowdspark/Crowdspark/service/impl/AiServiceImpl.java
 // Feature #39 — AI Campaign Description Generator
 // Feature #40 — AI-Powered Project Recommendations
+// Feature #41 — AI Campaign Success Predictor
+// Feature #42 — AI Support Chatbot
+// Feature #43 — AI Fraud & Risk Detection
 //
-// Both features share one Groq (OpenAI-compatible, free tier) client -- see
-// callGroq() below, extracted here now that a second feature needs the same
-// "build messages -> POST -> extract text" plumbing #39 already had.
+// All five features share one Groq (OpenAI-compatible, free tier) client --
+// see callGroq()/callGroqRaw() below.
 //
 // GROQ_API_KEY is intentionally OPTIONAL at startup (mirrors how
 // FirebaseConfig handles a missing FIREBASE_SERVICE_ACCOUNT_PATH): this app
 // is already live on Render, and a hard-required @NotBlank in
 // AppSecretsProperties would crash the entire backend -- every unrelated
-// endpoint included -- the moment either feature ships, if the key hasn't
-// been added on Render yet. Instead, both features degrade to a clear 503
-// until the key is set.
+// endpoint included -- the moment any of these features ships, if the key
+// hasn't been added on Render yet. Instead, every feature here degrades to
+// a clear 503 (or, for #43's background scan, just logs and skips) until
+// the key is set.
 
 package Crowdspark.Crowdspark.service.impl;
 
@@ -29,13 +32,17 @@ import Crowdspark.Crowdspark.dto.SupportChatResponse;
 import Crowdspark.Crowdspark.entity.Category;
 import Crowdspark.Crowdspark.entity.Donation;
 import Crowdspark.Crowdspark.entity.Project;
+import Crowdspark.Crowdspark.entity.ProjectFraudCheck;
 import Crowdspark.Crowdspark.entity.ProjectMedia;
 import Crowdspark.Crowdspark.entity.SavedProject;
 import Crowdspark.Crowdspark.entity.User;
+import Crowdspark.Crowdspark.entity.type.FraudCheckStatus;
 import Crowdspark.Crowdspark.entity.type.MediaUsage;
 import Crowdspark.Crowdspark.entity.type.PaymentStatus;
 import Crowdspark.Crowdspark.entity.type.ProjectStatus;
+import Crowdspark.Crowdspark.queue.RedisQueueService;
 import Crowdspark.Crowdspark.repository.DonationRepository;
+import Crowdspark.Crowdspark.repository.ProjectFraudCheckRepository;
 import Crowdspark.Crowdspark.repository.ProjectRepository;
 import Crowdspark.Crowdspark.repository.SavedProjectRepository;
 import Crowdspark.Crowdspark.service.AiService;
@@ -62,6 +69,7 @@ import org.springframework.web.client.RestTemplate;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
@@ -79,11 +87,13 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class AiServiceImpl implements AiService {
 
-    private final RestTemplate           restTemplate;
-    private final StringRedisTemplate    redisTemplate;
-    private final ProjectRepository      projectRepository;
-    private final DonationRepository     donationRepository;
-    private final SavedProjectRepository savedProjectRepository;
+    private final RestTemplate               restTemplate;
+    private final StringRedisTemplate        redisTemplate;
+    private final ProjectRepository          projectRepository;
+    private final DonationRepository         donationRepository;
+    private final SavedProjectRepository     savedProjectRepository;
+    private final ProjectFraudCheckRepository projectFraudCheckRepository;
+    private final RedisQueueService          queueService;
 
     private final ObjectMapper mapper = new ObjectMapper().findAndRegisterModules();
 
@@ -604,6 +614,140 @@ public class AiServiceImpl implements AiService {
             return List.of();
         }
     }
+
+    // ═════════════════════════════════════════════════════════════════════
+    // Feature #43 — Fraud & Risk Detection
+    // ═════════════════════════════════════════════════════════════════════
+    // Runs async, off the submission request entirely — see the class-level
+    // comment on FraudScanJobWorker for the full worker-loop design. Two
+    // methods here: queueFraudScan() is the one other services call (on the
+    // public AiService interface); scanProjectForFraud() is what the worker
+    // actually invokes -- deliberately NOT on the interface, exact same
+    // relationship EmailJobWorker has with EmailServiceImpl's "...Now"
+    // methods (concrete-class dependency, not the public service interface).
+
+    private static final String FRAUD_QUEUE = "ai-fraud-scan";
+
+    private static final String FRAUD_SYSTEM_PROMPT = """
+            You are a risk analyst for CrowdSpark, a crowdfunding platform for creators in India \
+            (similar to Kickstarter or Indiegogo). All amounts are in Indian Rupees (INR).
+
+            You will be given a newly submitted campaign, awaiting admin approval. Assess how likely \
+            it is to be fraudulent, misleading, or otherwise a problem for the platform - not simply \
+            how good the campaign copy is. Real crowdfunding fraud and risk patterns include: a goal \
+            far too large or too small for the scope actually described, vague or generic \
+            descriptions that could describe almost any project, promises of guaranteed profit or \
+            investment returns (crowdfunding here is a donation or reward, never an investment - \
+            this is a serious red flag), urgency or pressure tactics, claims of partnerships, \
+            credentials, or media coverage stated as fact with no way to verify them, and a story \
+            that is internally inconsistent.
+
+            A short, simple, honest campaign is not automatically risky - plenty of legitimate \
+            campaigns are brief. Score the actual signals present, do not penalize brevity alone.
+
+            Score the risk from 0 to 100, where 0 means no concerns and 100 means strong signs of \
+            fraud. Only flag what the text actually supports - never invent a concern you cannot \
+            point to in the given content.
+
+            Respond with ONLY a single valid JSON object - no markdown code fences, no preamble, no \
+            text outside the JSON. It must have exactly these keys: riskScore (a whole number \
+            0-100), riskLevel (exactly one of LOW, MEDIUM, or HIGH), reasoning (2-3 plain-text \
+            sentences for the admin reviewing this), and signals (an array of 0-5 short strings, \
+            each a specific concern - an empty array is correct when there is nothing notable).""";
+
+    @Override
+    public void queueFraudScan(Long projectId) {
+        queueService.enqueue(FRAUD_QUEUE, "SCAN_PROJECT", new FraudScanPayload(projectId),
+                () -> scanProjectForFraud(projectId));
+    }
+
+    /** Called by FraudScanJobWorker. Public (not on AiService) so the worker
+     *  can reach it directly, same pattern as EmailServiceImpl's "Now" methods. */
+    @Transactional
+    public void scanProjectForFraud(Long projectId) {
+
+        if (apiKey == null || apiKey.isBlank()) {
+            log.warn("Fraud scan requested for project {} but GROQ_API_KEY is not configured — skipping", projectId);
+            return; // background job — nothing is waiting on a response, so just skip rather than throw
+        }
+
+        Project project = projectRepository.findById(projectId).orElse(null);
+        if (project == null) {
+            log.warn("Fraud scan requested for project {} but it no longer exists — skipping", projectId);
+            return;
+        }
+
+        ProjectFraudCheck check = projectFraudCheckRepository.findByProject_Id(projectId)
+                .orElseGet(() -> {
+                    ProjectFraudCheck c = new ProjectFraudCheck();
+                    c.setProject(project);
+                    return c;
+                });
+
+        try {
+            String   raw  = callGroq(FRAUD_SYSTEM_PROMPT, buildFraudPrompt(project), 0.3);
+            JsonNode json = parseJson(raw);
+
+            int    score = (int) clamp(json.path("riskScore").asInt(50), 0, 100);
+            String level = trim(json.path("riskLevel").asText("MEDIUM"), 10).toUpperCase();
+            if (!level.equals("LOW") && !level.equals("MEDIUM") && !level.equals("HIGH")) level = "MEDIUM";
+            String reasoning = trim(json.path("reasoning").asText(""), 1000);
+
+            List<String> signalsList = new ArrayList<>();
+            if (json.path("signals").isArray()) {
+                for (JsonNode s : json.path("signals")) {
+                    String sig = trim(s.asText(""), 200);
+                    if (!sig.isBlank()) signalsList.add(sig);
+                }
+            }
+
+            check.setStatus(FraudCheckStatus.COMPLETED);
+            check.setRiskScore(score);
+            check.setRiskLevel(level);
+            check.setReasoning(reasoning.isBlank() ? "No specific concerns noted." : reasoning);
+            check.setSignals(String.join("\n", signalsList));
+            check.setModel(model);
+            check.setCheckedAt(LocalDateTime.now());
+
+        } catch (Exception e) {
+            // Groq down, malformed response, etc. — record FAILED so the admin
+            // UI shows "scan unavailable" honestly instead of a wrong score,
+            // and so this doesn't get silently retried forever.
+            log.error("Fraud scan failed for project {}: {}", projectId, e.getMessage());
+            check.setStatus(FraudCheckStatus.FAILED);
+            check.setCheckedAt(LocalDateTime.now());
+        }
+
+        projectFraudCheckRepository.save(check);
+    }
+
+    private String buildFraudPrompt(Project project) {
+        long durationDays = Math.max(0, ChronoUnit.DAYS.between(LocalDateTime.now(), project.getDeadline()));
+        String categories = project.getCategories().isEmpty() ? "none"
+                : project.getCategories().stream().map(Category::getName).collect(Collectors.joining(", "));
+        User creator = project.getCreator();
+        long accountAgeDays = creator.getCreatedAt() != null
+                ? ChronoUnit.DAYS.between(creator.getCreatedAt(), LocalDateTime.now()) : -1;
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("Title: ").append(project.getTitle()).append('\n');
+        sb.append("Category: ").append(categories).append('\n');
+        sb.append("Location: ").append(project.getLocation() == null || project.getLocation().isBlank()
+                ? "not given" : project.getLocation()).append('\n');
+        sb.append("Funding goal: INR ").append(String.format("%,.0f", project.getGoalAmount())).append('\n');
+        sb.append("Campaign length: ").append(durationDays).append(" days\n");
+        sb.append("Media files attached: ").append(project.getMedia().size()).append('\n');
+        sb.append("Creator account age: ").append(accountAgeDays >= 0 ? accountAgeDays + " days" : "unknown").append('\n');
+        sb.append("Creator's previously created projects: ")
+          .append(creator.getTotalProjectsCreated() == null ? 0 : creator.getTotalProjectsCreated()).append('\n');
+        sb.append("\nShort pitch:\n").append(project.getShortDescription()).append('\n');
+        sb.append("\nFull story:\n").append(project.getFullDescription());
+        return sb.toString();
+    }
+
+    /** Queue payload — public+static so FraudScanJobWorker can deserialize
+     *  into it directly, same as EmailServiceImpl's nested payload records. */
+    public record FraudScanPayload(Long projectId) {}
 
     // ═════════════════════════════════════════════════════════════════════
     // Shared: Groq HTTP call, JSON parsing, small helpers

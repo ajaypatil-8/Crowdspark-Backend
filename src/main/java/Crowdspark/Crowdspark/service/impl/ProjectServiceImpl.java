@@ -27,6 +27,7 @@ import Crowdspark.Crowdspark.repository.DonationRepository;
 import Crowdspark.Crowdspark.repository.ProjectRepository;
 import Crowdspark.Crowdspark.repository.RewardTierRepository;
 import Crowdspark.Crowdspark.repository.UserRepository;
+import Crowdspark.Crowdspark.service.AiService;
 import Crowdspark.Crowdspark.service.ProjectService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.cache.annotation.CacheEvict;
@@ -55,6 +56,7 @@ public class ProjectServiceImpl implements ProjectService {
     private final CategoryRepository   categoryRepository;
     private final RewardTierRepository rewardTierRepository;
     private final DonationRepository   donationRepository;
+    private final AiService            aiService; // Feature #43 — queues async fraud scan on submission
     private final Crowdspark.Crowdspark.metrics.PlatformMetrics platformMetrics; // <- Feature #31
 
     // Statuses publicly viewable on the detail page
@@ -101,6 +103,7 @@ public class ProjectServiceImpl implements ProjectService {
 
         Project saved = projectRepository.save(project);
         platformMetrics.recordProjectSubmitted();
+        aiService.queueFraudScan(saved.getId()); // Feature #43 — async, never blocks this request
 
         if (request.getRewardTiers() != null) {
             for (RewardTierRequest t : request.getRewardTiers()) {

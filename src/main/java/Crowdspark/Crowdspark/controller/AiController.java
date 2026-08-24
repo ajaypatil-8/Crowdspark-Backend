@@ -5,6 +5,11 @@
 // Feature #42 — AI Support Chatbot
 // Home for all Groq-powered creator/backer tools (#43-#48 will add siblings
 // here too).
+//
+// Feature #43 (Fraud & Risk Detection) has no endpoint here on purpose — it
+// runs automatically on project submission (see ProjectServiceImpl +
+// FraudScanJobWorker) and its results are surfaced through the existing
+// admin project-queue endpoints instead of a new one.
 
 package Crowdspark.Crowdspark.controller;
 

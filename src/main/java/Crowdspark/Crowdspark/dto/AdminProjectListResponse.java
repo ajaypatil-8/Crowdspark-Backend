@@ -22,4 +22,11 @@ public class AdminProjectListResponse {
     private LocalDateTime createdAt;
 
     private String status;
+
+    // Feature #43 — null when never scanned (e.g. project predates this
+    // feature); "PENDING" while the async scan hasn't completed yet.
+    private String  fraudCheckStatus;
+    private Integer fraudRiskScore;
+    private String  fraudRiskLevel;
+    private String  fraudReasoning;
 }

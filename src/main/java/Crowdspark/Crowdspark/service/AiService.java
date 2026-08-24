@@ -3,7 +3,8 @@
 // Feature #40 — AI-Powered Project Recommendations
 // Feature #41 — AI Campaign Success Predictor
 // Feature #42 — AI Support Chatbot
-// (this interface will keep growing with #43-#48 as the other free-AI
+// Feature #43 — AI Fraud & Risk Detection
+// (this interface will keep growing with #44-#48 as the other free-AI
 // creator/backer tools land)
 
 package Crowdspark.Crowdspark.service;
@@ -62,5 +63,16 @@ public interface AiService {
      * by IP-based rate limiting in RateLimitFilter instead of a per-user cap.
      */
     SupportChatResponse handleSupportChat(SupportChatRequest request);
+
+    /**
+     * Queues an async fraud/risk scan for a just-submitted project. Never
+     * blocks the caller (ProjectServiceImpl.createProject()) on a Groq call —
+     * enqueues onto the "ai-fraud-scan" Redis queue and returns immediately;
+     * FraudScanJobWorker does the actual scoring off-thread. If Redis is
+     * unavailable, RedisQueueService's own fallback runs the scan directly
+     * on a background executor instead, same durability tradeoff every other
+     * queued job in this app already accepts.
+     */
+    void queueFraudScan(Long projectId);
 }
 

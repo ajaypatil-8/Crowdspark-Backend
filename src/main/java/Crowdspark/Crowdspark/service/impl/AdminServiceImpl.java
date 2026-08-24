@@ -3,11 +3,13 @@ package Crowdspark.Crowdspark.service.impl;
 import Crowdspark.Crowdspark.dto.AdminProjectListResponse;
 import Crowdspark.Crowdspark.dto.UserResponse;
 import Crowdspark.Crowdspark.entity.Project;
+import Crowdspark.Crowdspark.entity.ProjectFraudCheck;
 import Crowdspark.Crowdspark.entity.ProjectMedia;
 import Crowdspark.Crowdspark.entity.User;
 import Crowdspark.Crowdspark.entity.type.AccountStatus;
 import Crowdspark.Crowdspark.entity.type.MediaUsage;
 import Crowdspark.Crowdspark.entity.type.ProjectStatus;
+import Crowdspark.Crowdspark.repository.ProjectFraudCheckRepository;
 import Crowdspark.Crowdspark.repository.ProjectRepository;
 import Crowdspark.Crowdspark.repository.UserRepository;
 import Crowdspark.Crowdspark.service.AdminService;
@@ -25,6 +27,8 @@ import Crowdspark.Crowdspark.repository.RewardTierRepository;
 import java.time.temporal.ChronoUnit;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -36,6 +40,7 @@ public class AdminServiceImpl implements AdminService {
     private final ModelMapper modelMapper;
     private final RewardTierRepository rewardTierRepository;
     private final EmailService emailService;
+    private final ProjectFraudCheckRepository projectFraudCheckRepository; // Feature #43
 
     // ─── Project Detail (admin — no status restriction) ───────────────────────
 
@@ -113,15 +118,26 @@ public class AdminServiceImpl implements AdminService {
     }
 
     private List<AdminProjectListResponse> toProjectResponses(Iterable<Project> projects) {
-        return ((List<Project>) (projects instanceof List ? projects :
-                ((org.springframework.data.domain.Page<Project>) projects).getContent()))
-                .stream()
+        List<Project> list = ((List<Project>) (projects instanceof List ? projects :
+                ((org.springframework.data.domain.Page<Project>) projects).getContent()));
+
+        // Feature #43 — one batch query for the whole page instead of one
+        // per project, same reasoning as every other batch-fetch already in
+        // this codebase (e.g. donationRepository.countDistinctBackersByCreatorIds).
+        List<Long> ids = list.stream().map(Project::getId).toList();
+        Map<Long, ProjectFraudCheck> fraudByProjectId = ids.isEmpty() ? Map.of()
+                : projectFraudCheckRepository.findByProject_IdIn(ids).stream()
+                        .collect(Collectors.toMap(f -> f.getProject().getId(), f -> f));
+
+        return list.stream()
                 .map(project -> {
                     String thumbnail = project.getMedia().stream()
                             .filter(m -> m.getUsage() == MediaUsage.THUMBNAIL)
                             .map(ProjectMedia::getMediaUrl)
                             .findFirst()
                             .orElse(null);
+
+                    ProjectFraudCheck fraud = fraudByProjectId.get(project.getId());
 
                     return AdminProjectListResponse.builder()
                             .id(project.getId())
@@ -133,6 +149,10 @@ public class AdminServiceImpl implements AdminService {
                             .deadline(project.getDeadline())
                             .createdAt(project.getCreatedAt())
                             .status(project.getStatus().name())
+                            .fraudCheckStatus(fraud != null ? fraud.getStatus().name() : null)
+                            .fraudRiskScore(fraud != null ? fraud.getRiskScore() : null)
+                            .fraudRiskLevel(fraud != null ? fraud.getRiskLevel() : null)
+                            .fraudReasoning(fraud != null ? fraud.getReasoning() : null)
                             .build();
                 }).toList();
     }
