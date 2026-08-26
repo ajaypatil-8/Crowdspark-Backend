@@ -6,10 +6,10 @@
 // Home for all Groq-powered creator/backer tools (#43-#48 will add siblings
 // here too).
 //
-// Feature #43 (Fraud & Risk Detection) has no endpoint here on purpose — it
-// runs automatically on project submission (see ProjectServiceImpl +
-// FraudScanJobWorker) and its results are surfaced through the existing
-// admin project-queue endpoints instead of a new one.
+// Feature #43 (Fraud & Risk Detection) and Feature #44 (KYC Document
+// Validation) have no endpoints here on purpose — both run automatically in
+// the background (see AiJobWorker) and surface through the existing admin
+// project-queue and KYC-queue endpoints instead of new ones.
 
 package Crowdspark.Crowdspark.controller;
 

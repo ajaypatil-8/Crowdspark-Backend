@@ -33,4 +33,13 @@ public class KycStatusResponse {
 
     private LocalDateTime submittedAt;
     private LocalDateTime reviewedAt;
+
+    // Feature #44 — populated ONLY by KycServiceImpl.getPendingKyc() (the
+    // admin queue). Left null on getMyKycStatus() (the creator-facing path)
+    // on purpose — see the comment on getPendingKyc() for why.
+    private String  aiCheckStatus;
+    private Boolean aiReadable;
+    private Boolean aiTamperingSuspected;
+    private String  aiConcerns;
+    private String  aiSummary;
 }

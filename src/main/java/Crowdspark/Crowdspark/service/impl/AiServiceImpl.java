@@ -4,9 +4,20 @@
 // Feature #41 — AI Campaign Success Predictor
 // Feature #42 — AI Support Chatbot
 // Feature #43 — AI Fraud & Risk Detection
+// Feature #44 — AI KYC Document Validation
 //
-// All five features share one Groq (OpenAI-compatible, free tier) client --
-// see callGroq()/callGroqRaw() below.
+// All six features share one Groq (OpenAI-compatible, free tier) client --
+// see callGroq()/callGroqRaw() for text, callGroqVision() for #44's
+// image-input calls (a separate method, not a shared overload -- see the
+// comment above callGroqVision() for why).
+//
+// IMPORTANT MODEL CORRECTION (fixed here, applies retroactively to #39-#43):
+// the default model was "llama-3.3-70b-versatile", which Groq has since
+// deprecated -- it no longer appears on Groq's own Supported Models page.
+// Default is now "openai/gpt-oss-120b", Groq's current flagship general
+// model. If you already deployed #39-#43 with the old default, just update
+// GROQ_MODEL (or application.properties) -- no code changes needed, since
+// the model was already externalized as a property.
 //
 // GROQ_API_KEY is intentionally OPTIONAL at startup (mirrors how
 // FirebaseConfig handles a missing FIREBASE_SERVICE_ACCOUNT_PATH): this app
@@ -14,8 +25,8 @@
 // AppSecretsProperties would crash the entire backend -- every unrelated
 // endpoint included -- the moment any of these features ships, if the key
 // hasn't been added on Render yet. Instead, every feature here degrades to
-// a clear 503 (or, for #43's background scan, just logs and skips) until
-// the key is set.
+// a clear 503 (or, for #43/#44's background scans, just logs and skips)
+// until the key is set.
 
 package Crowdspark.Crowdspark.service.impl;
 
@@ -31,17 +42,22 @@ import Crowdspark.Crowdspark.dto.SupportChatRequest;
 import Crowdspark.Crowdspark.dto.SupportChatResponse;
 import Crowdspark.Crowdspark.entity.Category;
 import Crowdspark.Crowdspark.entity.Donation;
+import Crowdspark.Crowdspark.entity.KycDocument;
+import Crowdspark.Crowdspark.entity.KycDocumentAiCheck;
 import Crowdspark.Crowdspark.entity.Project;
 import Crowdspark.Crowdspark.entity.ProjectFraudCheck;
 import Crowdspark.Crowdspark.entity.ProjectMedia;
 import Crowdspark.Crowdspark.entity.SavedProject;
 import Crowdspark.Crowdspark.entity.User;
 import Crowdspark.Crowdspark.entity.type.FraudCheckStatus;
+import Crowdspark.Crowdspark.entity.type.KycCheckStatus;
 import Crowdspark.Crowdspark.entity.type.MediaUsage;
 import Crowdspark.Crowdspark.entity.type.PaymentStatus;
 import Crowdspark.Crowdspark.entity.type.ProjectStatus;
 import Crowdspark.Crowdspark.queue.RedisQueueService;
 import Crowdspark.Crowdspark.repository.DonationRepository;
+import Crowdspark.Crowdspark.repository.KycDocumentAiCheckRepository;
+import Crowdspark.Crowdspark.repository.KycDocumentRepository;
 import Crowdspark.Crowdspark.repository.ProjectFraudCheckRepository;
 import Crowdspark.Crowdspark.repository.ProjectRepository;
 import Crowdspark.Crowdspark.repository.SavedProjectRepository;
@@ -93,6 +109,8 @@ public class AiServiceImpl implements AiService {
     private final DonationRepository         donationRepository;
     private final SavedProjectRepository     savedProjectRepository;
     private final ProjectFraudCheckRepository projectFraudCheckRepository;
+    private final KycDocumentRepository       kycDocumentRepository;
+    private final KycDocumentAiCheckRepository kycDocumentAiCheckRepository;
     private final RedisQueueService          queueService;
 
     private final ObjectMapper mapper = new ObjectMapper().findAndRegisterModules();
@@ -100,8 +118,16 @@ public class AiServiceImpl implements AiService {
     @Value("${groq.api-key:}")
     private String apiKey;
 
-    @Value("${groq.model:llama-3.3-70b-versatile}")
+    @Value("${groq.model:openai/gpt-oss-120b}")
     private String model;
+
+    // Feature #44 — separate from the general "model" above: this is the
+    // only vision-capable model on Groq at the moment, and Groq's own docs
+    // list it as Preview ("may be discontinued at short notice"), not
+    // Production. Kept configurable specifically so a future replacement
+    // doesn't require a code change.
+    @Value("${groq.vision-model:qwen/qwen3.6-27b}")
+    private String visionModel;
 
     @Value("${groq.max-tokens:2048}")
     private int maxTokens;
@@ -626,7 +652,14 @@ public class AiServiceImpl implements AiService {
     // relationship EmailJobWorker has with EmailServiceImpl's "...Now"
     // methods (concrete-class dependency, not the public service interface).
 
-    private static final String FRAUD_QUEUE = "ai-fraud-scan";
+    // Shared by every async AI job in this file (#43 and #44 so far) — one
+    // queue, one worker (AiJobWorker), dispatched by job type, exactly the
+    // same shape as EmailJobWorker/EMAIL_QUEUE already uses for its several
+    // email job types. Was a fraud-scan-only "ai-fraud-scan" queue with its
+    // own single-purpose worker until this feature needed the same async
+    // pattern for a second job type — consolidated rather than standing up
+    // a second near-identical worker class.
+    private static final String AI_JOBS_QUEUE = "ai-jobs";
 
     private static final String FRAUD_SYSTEM_PROMPT = """
             You are a risk analyst for CrowdSpark, a crowdfunding platform for creators in India \
@@ -657,7 +690,7 @@ public class AiServiceImpl implements AiService {
 
     @Override
     public void queueFraudScan(Long projectId) {
-        queueService.enqueue(FRAUD_QUEUE, "SCAN_PROJECT", new FraudScanPayload(projectId),
+        queueService.enqueue(AI_JOBS_QUEUE, "SCAN_PROJECT_FRAUD", new FraudScanPayload(projectId),
                 () -> scanProjectForFraud(projectId));
     }
 
@@ -745,9 +778,211 @@ public class AiServiceImpl implements AiService {
         return sb.toString();
     }
 
-    /** Queue payload — public+static so FraudScanJobWorker can deserialize
+    /** Queue payload — public+static so AiJobWorker can deserialize
      *  into it directly, same as EmailServiceImpl's nested payload records. */
     public record FraudScanPayload(Long projectId) {}
+
+    // ═════════════════════════════════════════════════════════════════════
+    // Feature #44 — KYC Document Validation (vision)
+    // ═════════════════════════════════════════════════════════════════════
+    // Async, same reasoning and shape as #43: queueKycScan() is public (on
+    // AiService), scanKycDocument() is what AiJobWorker actually calls and
+    // is deliberately not on the interface.
+    //
+    // Scope is intentionally narrow: readability and OBVIOUS tampering only
+    // -- this is a pre-check for a human admin, never a replacement for one,
+    // and never changes KYC status by itself. It does not attempt identity
+    // verification (matching the number/name against the image), which is a
+    // meaningfully higher-stakes claim an LLM is not reliable enough to make
+    // -- KycDocument.panNumber/aadhaarNumber are already collected as typed
+    // text separately and aren't touched here.
+    //
+    // Privacy: the system prompt explicitly instructs the model not to
+    // transcribe the ID number, name, address, or DOB into its response,
+    // even though it can see them in the image -- there's no reason to give
+    // this app's own database (or its logs) a second copy of that data. The
+    // result is also admin-only: KycServiceImpl only attaches AI-check
+    // fields to the admin queue response (getPendingKyc), never to the
+    // creator-facing one (getMyKycStatus) -- letting a submitter see exactly
+    // what the tampering check flagged would just teach them how to get a
+    // fake past it next time.
+
+    private static final String KYC_SYSTEM_PROMPT = """
+            You are a document quality and authenticity pre-check for CrowdSpark, a crowdfunding \
+            platform for creators in India. You are reviewing identity documents (PAN card and/or \
+            Aadhaar card images) a creator submitted for KYC verification, before a human reviewer \
+            looks at them.
+
+            Your job is narrow: flag readability problems and obvious visual signs of tampering. You \
+            are not making the final verification decision - a human always reviews this after you.
+
+            Check for:
+            - Readability: is the image in focus, well lit, not cropped or cut off, with the text and \
+              photo clearly visible?
+            - Obvious tampering: visually obvious signs of digital editing, such as mismatched fonts, \
+              inconsistent lighting or shadows between the photo and the card, visible copy-paste \
+              artifacts, blurred or smudged areas over specific fields, or text that does not align \
+              with the card's printed layout.
+
+            Important: do not transcribe or repeat the ID number, full name, address, or date of \
+            birth visible on the document anywhere in your response. Only describe quality and \
+            authenticity signals, never the personal data itself. If you cannot see the image clearly \
+            enough to assess it, say so rather than guessing.
+
+            Respond with ONLY a single valid JSON object - no markdown code fences, no preamble, no \
+            text outside the JSON. It must have exactly these keys: readable (true or false), \
+            tamperingSuspected (true or false), concerns (an array of 0-5 short strings describing \
+            specific quality or authenticity issues, without quoting any personal data from the \
+            document), and summary (one or two plain-text sentences for the admin reviewing this).""";
+
+    private static final String KYC_USER_PROMPT =
+            "Review the attached identity document image(s) for readability and obvious tampering "
+                    + "signs, following the system instructions exactly. Do not transcribe any personal data.";
+
+    @Override
+    public void queueKycScan(Long kycDocumentId) {
+        queueService.enqueue(AI_JOBS_QUEUE, "SCAN_KYC_DOCUMENT", new KycScanPayload(kycDocumentId),
+                () -> scanKycDocument(kycDocumentId));
+    }
+
+    /** Called by AiJobWorker. Public (not on AiService) so the worker can
+     *  reach it directly, same pattern as scanProjectForFraud(). */
+    @Transactional
+    public void scanKycDocument(Long kycDocumentId) {
+
+        if (apiKey == null || apiKey.isBlank()) {
+            log.warn("KYC scan requested for doc {} but GROQ_API_KEY is not configured — skipping", kycDocumentId);
+            return; // background job — nothing is waiting on a response, so just skip rather than throw
+        }
+
+        KycDocument kyc = kycDocumentRepository.findById(kycDocumentId).orElse(null);
+        if (kyc == null) {
+            log.warn("KYC scan requested for doc {} but it no longer exists — skipping", kycDocumentId);
+            return;
+        }
+
+        List<String> images = new ArrayList<>();
+        if (kyc.getPanCardImageUrl() != null && !kyc.getPanCardImageUrl().isBlank()) {
+            images.add(kyc.getPanCardImageUrl());
+        }
+        if (kyc.getAadhaarFrontImageUrl() != null && !kyc.getAadhaarFrontImageUrl().isBlank()) {
+            images.add(kyc.getAadhaarFrontImageUrl());
+        }
+        if (kyc.getAadhaarBackImageUrl() != null && !kyc.getAadhaarBackImageUrl().isBlank()) {
+            images.add(kyc.getAadhaarBackImageUrl());
+        }
+
+        KycDocumentAiCheck check = kycDocumentAiCheckRepository.findByKycDocument_Id(kycDocumentId)
+                .orElseGet(() -> {
+                    KycDocumentAiCheck c = new KycDocumentAiCheck();
+                    c.setKycDocument(kyc);
+                    return c;
+                });
+
+        if (images.isEmpty()) {
+            log.warn("KYC scan requested for doc {} but no document images are attached — skipping", kycDocumentId);
+            check.setStatus(KycCheckStatus.FAILED);
+            check.setSummary("No document images were attached to scan.");
+            check.setCheckedAt(LocalDateTime.now());
+            kycDocumentAiCheckRepository.save(check);
+            return;
+        }
+
+        try {
+            // Qwen3.6-27B currently caps requests at 3 images -- PAN + Aadhaar
+            // front + Aadhaar back is exactly the maximum this app ever sends.
+            String   raw  = callGroqVision(KYC_SYSTEM_PROMPT, KYC_USER_PROMPT, images);
+            JsonNode json = parseJson(raw);
+
+            boolean readable   = json.path("readable").asBoolean(true);
+            boolean tampering  = json.path("tamperingSuspected").asBoolean(false);
+            String  summary    = trim(json.path("summary").asText(""), 500);
+
+            List<String> concernsList = new ArrayList<>();
+            if (json.path("concerns").isArray()) {
+                for (JsonNode c : json.path("concerns")) {
+                    String concern = trim(c.asText(""), 200);
+                    if (!concern.isBlank()) concernsList.add(concern);
+                }
+            }
+
+            check.setStatus(KycCheckStatus.COMPLETED);
+            check.setReadable(readable);
+            check.setTamperingSuspected(tampering);
+            check.setConcerns(String.join("\n", concernsList));
+            check.setSummary(summary.isBlank() ? "No specific concerns noted." : summary);
+            check.setModel(visionModel);
+            check.setCheckedAt(LocalDateTime.now());
+
+        } catch (Exception e) {
+            // Vision model down/rate-limited/unparseable, etc. — record
+            // FAILED so the admin UI shows "scan unavailable" honestly
+            // instead of a wrong result, and so this isn't retried forever.
+            log.error("KYC scan failed for doc {}: {}", kycDocumentId, e.getMessage());
+            check.setStatus(KycCheckStatus.FAILED);
+            check.setCheckedAt(LocalDateTime.now());
+        }
+
+        kycDocumentAiCheckRepository.save(check);
+    }
+
+    /** Vision call — deliberately a separate method from callGroq()/
+     *  callGroqRaw() rather than a third overload of the same helper.
+     *  Those build { role, content: "<string>" } messages; a vision message
+     *  needs content to be an array of typed parts ({type:"text",...} and
+     *  {type:"image_url",...}), a genuinely different JSON shape, not just a
+     *  different parameter list. Keeping it separate avoids reshaping the
+     *  three proven, already-shipped text call sites (#39, #41, #42) to
+     *  accommodate a shape only this one feature needs. */
+    private String callGroqVision(String systemPrompt, String textPrompt, List<String> imageUrls) {
+        Map<String, Object> textPart = new HashMap<>();
+        textPart.put("type", "text");
+        textPart.put("text", textPrompt);
+
+        List<Map<String, Object>> userContent = new ArrayList<>();
+        userContent.add(textPart);
+        for (String url : imageUrls) {
+            Map<String, Object> imagePart = new HashMap<>();
+            imagePart.put("type", "image_url");
+            imagePart.put("image_url", Map.of("url", url));
+            userContent.add(imagePart);
+        }
+
+        Map<String, Object> systemMsg = new HashMap<>();
+        systemMsg.put("role", "system");
+        systemMsg.put("content", systemPrompt);
+
+        Map<String, Object> userMsg = new HashMap<>();
+        userMsg.put("role", "user");
+        userMsg.put("content", userContent);
+
+        Map<String, Object> body = new HashMap<>();
+        body.put("model", visionModel);
+        body.put("max_completion_tokens", 800); // short structured JSON out, no need for the full text budget
+        body.put("temperature", 0.2);            // low — this is a factual quality check, not creative writing
+        body.put("response_format", Map.of("type", "json_object"));
+        body.put("messages", List.of(systemMsg, userMsg));
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.setBearerAuth(apiKey);
+
+        ResponseEntity<Map> resp;
+        try {
+            resp = restTemplate.exchange(groqUrl, HttpMethod.POST, new HttpEntity<>(body, headers), Map.class);
+        } catch (HttpClientErrorException | HttpServerErrorException e) {
+            log.error("Groq vision API error: status={} body={}", e.getStatusCode(), e.getResponseBodyAsString());
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "AI document check failed. Please try again.");
+        } catch (ResourceAccessException e) {
+            log.error("Groq vision API timeout/network error: {}", e.getMessage());
+            throw new ResponseStatusException(HttpStatus.GATEWAY_TIMEOUT, "AI document check timed out. Please try again.");
+        }
+        return extractText(resp.getBody());
+    }
+
+    /** Queue payload — public+static so AiJobWorker can deserialize into it
+     *  directly, same as FraudScanPayload above. */
+    public record KycScanPayload(Long kycDocumentId) {}
 
     // ═════════════════════════════════════════════════════════════════════
     // Shared: Groq HTTP call, JSON parsing, small helpers

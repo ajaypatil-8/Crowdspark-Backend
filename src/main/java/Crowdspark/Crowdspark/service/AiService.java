@@ -4,7 +4,8 @@
 // Feature #41 — AI Campaign Success Predictor
 // Feature #42 — AI Support Chatbot
 // Feature #43 — AI Fraud & Risk Detection
-// (this interface will keep growing with #44-#48 as the other free-AI
+// Feature #44 — AI KYC Document Validation
+// (this interface will keep growing with #45-#48 as the other free-AI
 // creator/backer tools land)
 
 package Crowdspark.Crowdspark.service;
@@ -74,5 +75,15 @@ public interface AiService {
      * queued job in this app already accepts.
      */
     void queueFraudScan(Long projectId);
+
+    /**
+     * Queues an async readability/tampering pre-check for a just-submitted
+     * KYC document (PAN + Aadhaar front/back, whichever are attached), using
+     * a vision-capable model. Same fire-and-forget shape as queueFraudScan —
+     * never blocks KycServiceImpl.submitKyc(). Advisory only: the result is
+     * shown to admins alongside the existing human review, never shown to
+     * the creator, and never changes KYC status on its own.
+     */
+    void queueKycScan(Long kycDocumentId);
 }
 

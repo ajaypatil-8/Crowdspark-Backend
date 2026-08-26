@@ -3,14 +3,17 @@ package Crowdspark.Crowdspark.service.impl;
 import Crowdspark.Crowdspark.dto.KycStatusResponse;
 import Crowdspark.Crowdspark.dto.KycSubmitRequest;
 import Crowdspark.Crowdspark.entity.KycDocument;
+import Crowdspark.Crowdspark.entity.KycDocumentAiCheck;
 import Crowdspark.Crowdspark.entity.OtpVerification;
 import Crowdspark.Crowdspark.entity.User;
 import Crowdspark.Crowdspark.entity.type.KycStatus;
 import Crowdspark.Crowdspark.entity.type.Role;
 import Crowdspark.Crowdspark.exception.AuthException;
+import Crowdspark.Crowdspark.repository.KycDocumentAiCheckRepository;
 import Crowdspark.Crowdspark.repository.KycDocumentRepository;
 import Crowdspark.Crowdspark.repository.OtpRepository;
 import Crowdspark.Crowdspark.repository.UserRepository;
+import Crowdspark.Crowdspark.service.AiService;
 import Crowdspark.Crowdspark.service.AuditLogService;
 import Crowdspark.Crowdspark.service.EmailService;
 import Crowdspark.Crowdspark.service.KycService;
@@ -21,6 +24,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
 import java.util.stream.Collectors;
 
@@ -31,6 +35,8 @@ public class KycServiceImpl implements KycService {
     private final UserRepository userRepository;
     private final OtpRepository otpRepository;
     private final KycDocumentRepository kycDocumentRepository;
+    private final KycDocumentAiCheckRepository kycDocumentAiCheckRepository; // Feature #44
+    private final AiService aiService; // Feature #44 — queues async KYC document scan on submission
     private final EmailService emailService;
     private final AuditLogService auditLogService;
     private final NotificationService notificationService;
@@ -161,6 +167,7 @@ public class KycServiceImpl implements KycService {
         kyc.setUpiId(request.getUpiId());
 
         kycDocumentRepository.save(kyc);
+        aiService.queueKycScan(kyc.getId()); // Feature #44 — async, never blocks this request
 
         // Update user kycStatus
         user.setKycStatus(KycStatus.PENDING_APPROVAL);
@@ -183,11 +190,32 @@ public class KycServiceImpl implements KycService {
 
     @Override
     public List<KycStatusResponse> getPendingKyc() {
-        return kycDocumentRepository.findByKycStatus(KycStatus.PENDING_APPROVAL)
-                .stream()
+        List<KycDocument> pending = kycDocumentRepository.findByKycStatus(KycStatus.PENDING_APPROVAL);
+
+        // Feature #44 — batch-fetch AI checks for this admin-only view.
+        // Deliberately NOT done in mapToResponse() itself, since that method
+        // is shared with getMyKycStatus() (creator-facing) — a submitter
+        // seeing exactly what the tampering check flagged would just teach
+        // them how to get a fake past it next time.
+        List<Long> kycIds = pending.stream().map(KycDocument::getId).toList();
+        Map<Long, KycDocumentAiCheck> aiChecksByKycId = kycIds.isEmpty() ? Map.of()
+                : kycDocumentAiCheckRepository.findByKycDocument_IdIn(kycIds).stream()
+                        .collect(Collectors.toMap(c -> c.getKycDocument().getId(), c -> c));
+
+        return pending.stream()
                 .map(kyc -> {
                     User user = getUser(kyc.getUserId());
-                    return mapToResponse(user, kyc);
+                    KycStatusResponse response = mapToResponse(user, kyc);
+
+                    KycDocumentAiCheck aiCheck = aiChecksByKycId.get(kyc.getId());
+                    if (aiCheck != null) {
+                        response.setAiCheckStatus(aiCheck.getStatus().name());
+                        response.setAiReadable(aiCheck.getReadable());
+                        response.setAiTamperingSuspected(aiCheck.getTamperingSuspected());
+                        response.setAiConcerns(aiCheck.getConcerns());
+                        response.setAiSummary(aiCheck.getSummary());
+                    }
+                    return response;
                 })
                 .collect(Collectors.toList());
     }
