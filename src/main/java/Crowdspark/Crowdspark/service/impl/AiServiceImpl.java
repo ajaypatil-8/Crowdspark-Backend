@@ -6,8 +6,9 @@
 // Feature #43 — AI Fraud & Risk Detection
 // Feature #44 — AI KYC Document Validation
 // Feature #45 — AI Content Moderation
+// Feature #46 — AI Campaign Improvement Suggestions
 //
-// All seven features share one Groq (OpenAI-compatible, free tier) client --
+// All eight features share one Groq (OpenAI-compatible, free tier) client --
 // see callGroq()/callGroqRaw() for text, callGroqVision() for #44's
 // image-input calls.
 //
@@ -31,6 +32,8 @@ package Crowdspark.Crowdspark.service.impl;
 
 import Crowdspark.Crowdspark.dto.CampaignScoreRequest;
 import Crowdspark.Crowdspark.dto.CampaignScoreResponse;
+import Crowdspark.Crowdspark.dto.CampaignSuggestionsRequest;
+import Crowdspark.Crowdspark.dto.CampaignSuggestionsResponse;
 import Crowdspark.Crowdspark.dto.ChatMessage;
 import Crowdspark.Crowdspark.dto.GenerateDescriptionRequest;
 import Crowdspark.Crowdspark.dto.GenerateDescriptionResponse;
@@ -150,6 +153,9 @@ public class AiServiceImpl implements AiService {
 
     @Value("${ai.success-score.daily-limit:25}")
     private int successScoreDailyLimit;
+
+    @Value("${ai.suggestions.daily-limit:25}")
+    private int suggestionsDailyLimit;
 
     private static final DateTimeFormatter DAY_KEY  = DateTimeFormatter.ofPattern("yyyyMMdd");
     private static final double            MIN_GOAL = 1_000;
@@ -492,15 +498,10 @@ public class AiServiceImpl implements AiService {
         String verdict     = trim(json.path("verdict").asText(""), 40);
         String explanation = trim(json.path("explanation").asText(""), 500);
 
-        List<String> tips = new ArrayList<>();
-        if (json.path("tips").isArray()) {
-            for (JsonNode t : json.path("tips")) {
-                String tip = trim(t.asText(""), 200);
-                if (!tip.isBlank()) tips.add(tip);
-                if (tips.size() >= 6) break;
-            }
-        }
-
+        // Feature #46 factored this exact loop out into extractStringArray()
+        // below when it needed the same pattern for three separate fields —
+        // this call site was updated to match rather than leaving two copies.
+        List<String> tips = extractStringArray(json, "tips", 6, 200);
         if (verdict.isBlank() || explanation.isBlank()) {
             log.error("Groq returned unparseable success-score content: {}", raw);
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
@@ -1135,6 +1136,120 @@ public class AiServiceImpl implements AiService {
      *  them directly, same as FraudScanPayload/KycScanPayload above. */
     public record ProjectModerationPayload(Long projectId) {}
     public record CommentModerationPayload(Long commentId) {}
+
+    // ═════════════════════════════════════════════════════════════════════
+    // Feature #46 — Campaign Improvement Suggestions
+    // ═════════════════════════════════════════════════════════════════════
+    // Complements #41 rather than duplicating it: predictCampaignSuccess()
+    // gives one holistic 0-100 score with a flat tip list; this gives
+    // specific, categorized actions (title alternatives / reward-tier gaps
+    // / media gaps). Different enough in shape and purpose to warrant its
+    // own request/response DTOs rather than reusing CampaignScoreRequest —
+    // in particular this one takes actual reward-tier data (title + amount),
+    // not just a count, since a useful "gap in your price ladder" suggestion
+    // needs the real numbers to reason about.
+
+    private static final String SUGGESTIONS_SYSTEM_PROMPT = """
+            You are a campaign coach for CrowdSpark, a crowdfunding platform for creators in India. \
+            All amounts are in Indian Rupees (INR).
+
+            You will be given a creator's in-progress campaign draft - title, pitch, story, funding \
+            goal, media, and reward tiers - and asked for specific, structured suggestions to \
+            strengthen it before launch, organized into three categories.
+
+            For each category, give concrete suggestions grounded in what the creator has actually \
+            written, not generic advice that could apply to any campaign:
+            - Title: 2-3 alternative titles that are more specific or compelling than the current \
+              one, each a genuine option, not a joke or filler. If the current title is already \
+              strong, say so instead of forcing weaker alternatives.
+            - Rewards: specific reward tier ideas - gaps in the price ladder, a missing low-cost \
+              entry tier, a tier whose description could be clearer or more appealing. If there are \
+              no reward tiers yet, suggest 2-3 concrete starting tiers with amounts appropriate to \
+              the goal.
+            - Media: what's actually missing - a video, more images, a specific kind of shot (product \
+              photos, behind the scenes, the creator's own face) - based only on what's currently \
+              attached.
+
+            Only include a suggestion if it is genuinely useful - an empty list for a category is \
+            correct when there is nothing worth changing. Never invent facts about the campaign that \
+            were not given.
+
+            Respond with ONLY a single valid JSON object - no markdown code fences, no preamble, no \
+            text outside the JSON. It must have exactly these keys: titleSuggestions (array of 0-3 \
+            short strings), rewardSuggestions (array of 0-4 short strings), mediaSuggestions (array \
+            of 0-3 short strings), and overallNote (one short plain-text sentence, or an empty string \
+            if the per-category suggestions already say everything worth saying).""";
+
+    @Override
+    public CampaignSuggestionsResponse getCampaignSuggestions(CampaignSuggestionsRequest request, Long creatorId) {
+
+        requireApiKey();
+        enforceDailyLimit("suggestions", creatorId, suggestionsDailyLimit);
+
+        String   raw  = callGroq(SUGGESTIONS_SYSTEM_PROMPT, buildSuggestionsPrompt(request), 0.5);
+        JsonNode json = parseJson(raw);
+
+        List<String> titleSuggestions  = extractStringArray(json, "titleSuggestions", 3, 200);
+        List<String> rewardSuggestions = extractStringArray(json, "rewardSuggestions", 4, 250);
+        List<String> mediaSuggestions  = extractStringArray(json, "mediaSuggestions", 3, 200);
+        String       overallNote       = trim(json.path("overallNote").asText(""), 300);
+
+        return CampaignSuggestionsResponse.builder()
+                .titleSuggestions(titleSuggestions)
+                .rewardSuggestions(rewardSuggestions)
+                .mediaSuggestions(mediaSuggestions)
+                .overallNote(overallNote)
+                .model(model)
+                .build();
+    }
+
+    private String buildSuggestionsPrompt(CampaignSuggestionsRequest req) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("Title: ").append(req.getTitle()).append('\n');
+        if (req.getCategory() != null && !req.getCategory().isBlank()) {
+            sb.append("Category: ").append(req.getCategory()).append('\n');
+        }
+        sb.append("Funding goal: INR ").append(String.format("%,.0f", req.getGoalAmount())).append('\n');
+        sb.append("Thumbnail uploaded: ").append(req.isHasThumbnail() ? "yes" : "no").append('\n');
+        sb.append("Video uploaded: ").append(req.isHasVideo() ? "yes" : "no").append('\n');
+        sb.append("Total media files: ").append(req.getMediaCount()).append('\n');
+
+        List<CampaignSuggestionsRequest.RewardTierSummary> tiers = req.getRewardTiers();
+        if (tiers == null || tiers.isEmpty()) {
+            sb.append("Reward tiers: none set up yet\n");
+        } else {
+            sb.append("Reward tiers:\n");
+            for (CampaignSuggestionsRequest.RewardTierSummary t : tiers) {
+                sb.append("- INR ").append(String.format("%,.0f", t.getMinimumAmount()))
+                  .append(": ").append(t.getTitle());
+                if (t.getDescription() != null && !t.getDescription().isBlank()) {
+                    sb.append(" — ").append(t.getDescription());
+                }
+                sb.append('\n');
+            }
+        }
+
+        sb.append("\nShort pitch:\n").append(req.getShortDescription()).append('\n');
+        sb.append("\nFull story:\n").append(req.getFullDescription());
+        return sb.toString();
+    }
+
+    /** Reads a JSON array field into a capped list of trimmed strings,
+     *  dropping any blank entries. Shared by every feature in this file
+     *  that returns a suggestions/tips list (#41's tips, #46's three
+     *  categories) — pulled out here now that a second feature needs the
+     *  exact same array-reading loop #41 already had inline. */
+    private List<String> extractStringArray(JsonNode parent, String field, int maxItems, int maxLenEach) {
+        List<String> out = new ArrayList<>();
+        if (parent.path(field).isArray()) {
+            for (JsonNode item : parent.path(field)) {
+                String s = trim(item.asText(""), maxLenEach);
+                if (!s.isBlank()) out.add(s);
+                if (out.size() >= maxItems) break;
+            }
+        }
+        return out;
+    }
 
     // ═════════════════════════════════════════════════════════════════════
     // Shared: Groq HTTP call, JSON parsing, small helpers

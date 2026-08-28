@@ -6,13 +6,16 @@
 // Feature #43 — AI Fraud & Risk Detection
 // Feature #44 — AI KYC Document Validation
 // Feature #45 — AI Content Moderation
-// (this interface will keep growing with #46-#48 as the other free-AI
+// Feature #46 — AI Campaign Improvement Suggestions
+// (this interface will keep growing with #47-#48 as the other free-AI
 // creator/backer tools land)
 
 package Crowdspark.Crowdspark.service;
 
 import Crowdspark.Crowdspark.dto.CampaignScoreRequest;
 import Crowdspark.Crowdspark.dto.CampaignScoreResponse;
+import Crowdspark.Crowdspark.dto.CampaignSuggestionsRequest;
+import Crowdspark.Crowdspark.dto.CampaignSuggestionsResponse;
 import Crowdspark.Crowdspark.dto.GenerateDescriptionRequest;
 import Crowdspark.Crowdspark.dto.GenerateDescriptionResponse;
 import Crowdspark.Crowdspark.dto.RecommendationsResponse;
@@ -105,5 +108,16 @@ public interface AiService {
      * the way a flagged project does.
      */
     void queueCommentModerationScan(Long commentId);
+
+    /**
+     * Reviews a draft campaign and returns structured, categorized
+     * suggestions (title alternatives, reward-tier gaps, media gaps) —
+     * distinct from #41's predictCampaignSuccess: that gives one holistic
+     * score, this gives specific per-category actions. Stateless, same as
+     * #39/#41 — evaluates whatever draft data the wizard currently holds.
+     *
+     * @param creatorId used only to key the per-creator daily usage limit
+     */
+    CampaignSuggestionsResponse getCampaignSuggestions(CampaignSuggestionsRequest request, Long creatorId);
 }
 

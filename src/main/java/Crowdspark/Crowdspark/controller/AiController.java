@@ -6,16 +6,20 @@
 // Home for all Groq-powered creator/backer tools (#43-#48 will add siblings
 // here too).
 //
-// Feature #43 (Fraud & Risk Detection) and Feature #44 (KYC Document
-// Validation) have no endpoints here on purpose — both run automatically in
-// the background (see AiJobWorker) and surface through the existing admin
-// project-queue and KYC-queue endpoints instead of new ones.
+// Feature #43 (Fraud & Risk Detection), #44 (KYC Document Validation), and
+// #45 (Content Moderation, project half) have no endpoints here on purpose —
+// all three run automatically in the background (see AiJobWorker) and
+// surface through existing admin queues instead of new endpoints. #45's
+// comment-moderation queue lives on AdminController instead, alongside the
+// other admin moderation actions.
 
 package Crowdspark.Crowdspark.controller;
 
 import Crowdspark.Crowdspark.dto.ApiResponse;
 import Crowdspark.Crowdspark.dto.CampaignScoreRequest;
 import Crowdspark.Crowdspark.dto.CampaignScoreResponse;
+import Crowdspark.Crowdspark.dto.CampaignSuggestionsRequest;
+import Crowdspark.Crowdspark.dto.CampaignSuggestionsResponse;
 import Crowdspark.Crowdspark.dto.GenerateDescriptionRequest;
 import Crowdspark.Crowdspark.dto.GenerateDescriptionResponse;
 import Crowdspark.Crowdspark.dto.RecommendationsResponse;
@@ -148,5 +152,27 @@ public class AiController {
             @Valid @RequestBody SupportChatRequest request) {
 
         return ResponseEntity.ok(ApiResponse.ok(aiService.handleSupportChat(request)));
+    }
+
+    /**
+     * POST /api/v1/ai/suggestions
+     * Creator only — returns structured, categorized improvement
+     * suggestions (title alternatives, reward-tier gaps, media gaps) for a
+     * draft campaign. Complements /success-score (#41): that returns one
+     * holistic score, this returns specific per-category actions.
+     */
+    @Operation(summary = "Get structured campaign improvement suggestions",
+            description = "Creator only. Returns title/reward/media suggestions separately, grounded "
+                    + "in the actual draft content — including real reward-tier amounts, not just a count.",
+            security = @SecurityRequirement(name = "bearerAuth"))
+    @PreAuthorize("hasRole('CREATOR')")
+    @PostMapping("/suggestions")
+    public ResponseEntity<ApiResponse<CampaignSuggestionsResponse>> getSuggestions(
+            @Valid @RequestBody CampaignSuggestionsRequest request,
+            @AuthenticationPrincipal String username) {
+
+        User creator = userService.getByUsername(username);
+        CampaignSuggestionsResponse response = aiService.getCampaignSuggestions(request, creator.getId());
+        return ResponseEntity.ok(ApiResponse.ok("Suggestions generated", response));
     }
 }
