@@ -1,14 +1,21 @@
 package Crowdspark.Crowdspark.service.impl;
 
+import Crowdspark.Crowdspark.dto.AdminFlaggedCommentResponse;
 import Crowdspark.Crowdspark.dto.AdminProjectListResponse;
 import Crowdspark.Crowdspark.dto.UserResponse;
 import Crowdspark.Crowdspark.entity.Project;
+import Crowdspark.Crowdspark.entity.ProjectComment;
+import Crowdspark.Crowdspark.entity.ContentModerationCheck;
 import Crowdspark.Crowdspark.entity.ProjectFraudCheck;
 import Crowdspark.Crowdspark.entity.ProjectMedia;
 import Crowdspark.Crowdspark.entity.User;
 import Crowdspark.Crowdspark.entity.type.AccountStatus;
+import Crowdspark.Crowdspark.entity.type.ContentType;
 import Crowdspark.Crowdspark.entity.type.MediaUsage;
+import Crowdspark.Crowdspark.entity.type.ModerationStatus;
 import Crowdspark.Crowdspark.entity.type.ProjectStatus;
+import Crowdspark.Crowdspark.repository.ContentModerationCheckRepository;
+import Crowdspark.Crowdspark.repository.ProjectCommentRepository;
 import Crowdspark.Crowdspark.repository.ProjectFraudCheckRepository;
 import Crowdspark.Crowdspark.repository.ProjectRepository;
 import Crowdspark.Crowdspark.repository.UserRepository;
@@ -41,6 +48,8 @@ public class AdminServiceImpl implements AdminService {
     private final RewardTierRepository rewardTierRepository;
     private final EmailService emailService;
     private final ProjectFraudCheckRepository projectFraudCheckRepository; // Feature #43
+    private final ContentModerationCheckRepository contentModerationCheckRepository; // Feature #45
+    private final ProjectCommentRepository projectCommentRepository; // Feature #45
 
     // ─── Project Detail (admin — no status restriction) ───────────────────────
 
@@ -129,6 +138,13 @@ public class AdminServiceImpl implements AdminService {
                 : projectFraudCheckRepository.findByProject_IdIn(ids).stream()
                         .collect(Collectors.toMap(f -> f.getProject().getId(), f -> f));
 
+        // Feature #45 — same batch-fetch reasoning, separate table since
+        // ContentModerationCheck is keyed by (contentType, contentId) rather
+        // than a project FK.
+        Map<Long, ContentModerationCheck> moderationByProjectId = ids.isEmpty() ? Map.of()
+                : contentModerationCheckRepository.findByContentTypeAndContentIdIn(ContentType.PROJECT, ids).stream()
+                        .collect(Collectors.toMap(ContentModerationCheck::getContentId, c -> c));
+
         return list.stream()
                 .map(project -> {
                     String thumbnail = project.getMedia().stream()
@@ -138,6 +154,7 @@ public class AdminServiceImpl implements AdminService {
                             .orElse(null);
 
                     ProjectFraudCheck fraud = fraudByProjectId.get(project.getId());
+                    ContentModerationCheck moderation = moderationByProjectId.get(project.getId());
 
                     return AdminProjectListResponse.builder()
                             .id(project.getId())
@@ -153,6 +170,9 @@ public class AdminServiceImpl implements AdminService {
                             .fraudRiskScore(fraud != null ? fraud.getRiskScore() : null)
                             .fraudRiskLevel(fraud != null ? fraud.getRiskLevel() : null)
                             .fraudReasoning(fraud != null ? fraud.getReasoning() : null)
+                            .moderationStatus(moderation != null ? moderation.getStatus().name() : null)
+                            .moderationCategory(moderation != null ? moderation.getCategory() : null)
+                            .moderationReasoning(moderation != null ? moderation.getReasoning() : null)
                             .build();
                 }).toList();
     }
@@ -235,5 +255,60 @@ public class AdminServiceImpl implements AdminService {
         user.setAccountStatus(AccountStatus.ACTIVE);
         user.setLocked(false);
         userRepository.save(user);
+    }
+
+    // ── Feature #45 — flagged-comments moderation queue ─────────────────────
+    // Comments only; flagged projects already appear in getPendingProjects()/
+    // getAllProjects() above via the same batch-fetch pattern.
+
+    @Override
+    public List<AdminFlaggedCommentResponse> getFlaggedComments() {
+        List<ContentModerationCheck> flags = contentModerationCheckRepository
+                .findByStatusAndResolvedByAdminFalseOrderByCreatedAtDesc(ModerationStatus.FLAGGED)
+                .stream()
+                .filter(f -> f.getContentType() == ContentType.COMMENT)
+                .toList();
+
+        if (flags.isEmpty()) return List.of();
+
+        List<Long> commentIds = flags.stream().map(ContentModerationCheck::getContentId).toList();
+        Map<Long, ProjectComment> commentsById = projectCommentRepository.findAllById(commentIds).stream()
+                .collect(Collectors.toMap(ProjectComment::getId, c -> c));
+
+        return flags.stream()
+                .map(flag -> {
+                    ProjectComment comment = commentsById.get(flag.getContentId());
+                    if (comment == null) return null; // comment hard-deleted since being flagged — nothing to review
+                    return AdminFlaggedCommentResponse.builder()
+                            .checkId(flag.getId())
+                            .commentId(comment.getId())
+                            .commentContent(comment.getContent())
+                            .commentAuthorUsername(comment.getAuthor().getUsername())
+                            .deleted(comment.isDeleted())
+                            .projectId(comment.getProject().getId())
+                            .projectTitle(comment.getProject().getTitle())
+                            .category(flag.getCategory())
+                            .reasoning(flag.getReasoning())
+                            .flaggedAt(flag.getCheckedAt())
+                            .build();
+                })
+                .filter(java.util.Objects::nonNull)
+                .toList();
+    }
+
+    @Override
+    @Transactional
+    public void resolveFlaggedComment(Long checkId, boolean restore) {
+        ContentModerationCheck flag = contentModerationCheckRepository.findById(checkId)
+                .orElseThrow(() -> new RuntimeException("Moderation flag not found: " + checkId));
+
+        if (restore) {
+            projectCommentRepository.findById(flag.getContentId()).ifPresent(comment -> {
+                comment.setDeleted(false);
+                projectCommentRepository.save(comment);
+            });
+        }
+        flag.setResolvedByAdmin(true);
+        contentModerationCheckRepository.save(flag);
     }
 }

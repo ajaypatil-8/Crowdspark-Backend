@@ -5,7 +5,8 @@
 // Feature #42 — AI Support Chatbot
 // Feature #43 — AI Fraud & Risk Detection
 // Feature #44 — AI KYC Document Validation
-// (this interface will keep growing with #45-#48 as the other free-AI
+// Feature #45 — AI Content Moderation
+// (this interface will keep growing with #46-#48 as the other free-AI
 // creator/backer tools land)
 
 package Crowdspark.Crowdspark.service;
@@ -85,5 +86,24 @@ public interface AiService {
      * the creator, and never changes KYC status on its own.
      */
     void queueKycScan(Long kycDocumentId);
+
+    /**
+     * Queues an async spam/hate-speech/misleading-claims check for a
+     * just-submitted project description. Advisory only, same as
+     * queueFraudScan — surfaces in the admin project queue, never blocks or
+     * auto-rejects on its own (projects already have a mandatory human
+     * approval gate before going live).
+     */
+    void queueProjectModerationScan(Long projectId);
+
+    /**
+     * Queues the same check for a just-posted comment. Unlike projects,
+     * comments have no review gate before they're publicly visible, so a
+     * FLAGGED result here auto-hides the comment (sets deleted=true, the
+     * same flag a user/admin deletion already uses) pending a human
+     * decision in the admin moderation queue, rather than staying visible
+     * the way a flagged project does.
+     */
+    void queueCommentModerationScan(Long commentId);
 }
 

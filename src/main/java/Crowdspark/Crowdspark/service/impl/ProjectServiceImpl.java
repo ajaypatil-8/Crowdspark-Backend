@@ -103,7 +103,8 @@ public class ProjectServiceImpl implements ProjectService {
 
         Project saved = projectRepository.save(project);
         platformMetrics.recordProjectSubmitted();
-        aiService.queueFraudScan(saved.getId()); // Feature #43 — async, never blocks this request
+        aiService.queueFraudScan(saved.getId());             // Feature #43 — async, never blocks this request
+        aiService.queueProjectModerationScan(saved.getId()); // Feature #45 — same, separate check
 
         if (request.getRewardTiers() != null) {
             for (RewardTierRequest t : request.getRewardTiers()) {

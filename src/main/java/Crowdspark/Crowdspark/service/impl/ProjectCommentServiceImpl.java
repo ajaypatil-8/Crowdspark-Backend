@@ -9,6 +9,7 @@ import Crowdspark.Crowdspark.entity.User;
 import Crowdspark.Crowdspark.repository.ProjectCommentRepository;
 import Crowdspark.Crowdspark.repository.ProjectRepository;
 import Crowdspark.Crowdspark.repository.UserRepository;
+import Crowdspark.Crowdspark.service.AiService;
 import Crowdspark.Crowdspark.service.NotificationService;
 import Crowdspark.Crowdspark.service.ProjectCommentService;
 import lombok.RequiredArgsConstructor;
@@ -31,6 +32,7 @@ public class ProjectCommentServiceImpl implements ProjectCommentService {
     private final ProjectRepository        projectRepository;
     private final UserRepository           userRepository;
     private final NotificationService      notificationService;
+    private final AiService                aiService; // Feature #45 — queues async moderation scan on post
 
     @Override
     public Page<ProjectCommentResponse> getComments(Long projectId, int page, int size) {
@@ -83,6 +85,7 @@ public class ProjectCommentServiceImpl implements ProjectCommentService {
         }
 
         ProjectComment saved = commentRepository.save(comment);
+        aiService.queueCommentModerationScan(saved.getId()); // Feature #45 — async, never blocks this request
         Long creatorId = project.getCreator().getId();
 
         // Notifications

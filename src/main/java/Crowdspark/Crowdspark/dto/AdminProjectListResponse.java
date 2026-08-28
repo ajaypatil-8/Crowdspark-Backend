@@ -29,4 +29,10 @@ public class AdminProjectListResponse {
     private Integer fraudRiskScore;
     private String  fraudRiskLevel;
     private String  fraudReasoning;
+
+    // Feature #45 — content moderation flag, separate concern from fraud
+    // risk above (spam/hate-speech/misleading vs financial-risk signals)
+    private String  moderationStatus;
+    private String  moderationCategory;
+    private String  moderationReasoning;
 }

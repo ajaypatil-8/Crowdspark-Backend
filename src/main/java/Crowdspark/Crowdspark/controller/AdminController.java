@@ -2,6 +2,7 @@
 
 package Crowdspark.Crowdspark.controller;
 
+import Crowdspark.Crowdspark.dto.AdminFlaggedCommentResponse;
 import Crowdspark.Crowdspark.dto.AdminKycAction;
 import Crowdspark.Crowdspark.dto.AdminProjectListResponse;
 import Crowdspark.Crowdspark.dto.ApiResponse;
@@ -247,5 +248,25 @@ public class AdminController {
                 .success(true)
                 .message("Refund retry initiated for all pending donations")
                 .build());
+    }
+
+    // ── Feature #45 — flagged-comments moderation queue ─────────────────────
+
+    @Operation(summary = "List flagged comments awaiting admin review", security = @SecurityRequirement(name = "bearerAuth"))
+    @PreAuthorize("hasRole('ADMIN')")
+    @GetMapping("/moderation/flagged-comments")
+    public ResponseEntity<ApiResponse<List<AdminFlaggedCommentResponse>>> getFlaggedComments() {
+        return ResponseEntity.ok(ApiResponse.ok(adminService.getFlaggedComments()));
+    }
+
+    @Operation(summary = "Resolve a flagged comment — restore=true un-hides it, restore=false leaves it hidden",
+            security = @SecurityRequirement(name = "bearerAuth"))
+    @PreAuthorize("hasRole('ADMIN')")
+    @PutMapping("/moderation/flagged-comments/{checkId}/resolve")
+    public ResponseEntity<ApiResponse<Void>> resolveFlaggedComment(
+            @PathVariable Long checkId,
+            @RequestParam(defaultValue = "false") boolean restore) {
+        adminService.resolveFlaggedComment(checkId, restore);
+        return ResponseEntity.ok(ApiResponse.<Void>builder().success(true).message("Resolved").build());
     }
 }

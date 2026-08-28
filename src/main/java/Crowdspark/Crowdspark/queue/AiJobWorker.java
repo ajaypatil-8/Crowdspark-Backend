@@ -1,6 +1,7 @@
 // src/main/java/Crowdspark/Crowdspark/queue/AiJobWorker.java
 // Feature #43 — AI Fraud & Risk Detection (introduced this worker)
-// Feature #44 — AI KYC Document Validation (added a second job type to it)
+// Feature #44 — AI KYC Document Validation (added a second job type)
+// Feature #45 — AI Content Moderation (added two more — project + comment)
 //
 // Same structural pattern as EmailJobWorker: a small pool of daemon threads
 // BRPOP-ing a Redis queue in a loop, dispatching by job type, dead-lettering
@@ -95,6 +96,14 @@ public class AiJobWorker {
             case "SCAN_KYC_DOCUMENT" -> {
                 var payload = mapper.readValue(job.getPayloadJson(), AiServiceImpl.KycScanPayload.class);
                 aiServiceImpl.scanKycDocument(payload.kycDocumentId());
+            }
+            case "SCAN_PROJECT_MODERATION" -> {
+                var payload = mapper.readValue(job.getPayloadJson(), AiServiceImpl.ProjectModerationPayload.class);
+                aiServiceImpl.scanProjectModeration(payload.projectId());
+            }
+            case "SCAN_COMMENT" -> {
+                var payload = mapper.readValue(job.getPayloadJson(), AiServiceImpl.CommentModerationPayload.class);
+                aiServiceImpl.scanCommentModeration(payload.commentId());
             }
             default -> log.error("Unknown AI job type '{}' — moving to dead-letter", job.getType());
         }

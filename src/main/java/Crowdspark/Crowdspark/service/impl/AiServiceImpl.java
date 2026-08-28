@@ -5,19 +5,18 @@
 // Feature #42 — AI Support Chatbot
 // Feature #43 — AI Fraud & Risk Detection
 // Feature #44 — AI KYC Document Validation
+// Feature #45 — AI Content Moderation
 //
-// All six features share one Groq (OpenAI-compatible, free tier) client --
+// All seven features share one Groq (OpenAI-compatible, free tier) client --
 // see callGroq()/callGroqRaw() for text, callGroqVision() for #44's
-// image-input calls (a separate method, not a shared overload -- see the
-// comment above callGroqVision() for why).
+// image-input calls.
 //
-// IMPORTANT MODEL CORRECTION (fixed here, applies retroactively to #39-#43):
-// the default model was "llama-3.3-70b-versatile", which Groq has since
-// deprecated -- it no longer appears on Groq's own Supported Models page.
-// Default is now "openai/gpt-oss-120b", Groq's current flagship general
-// model. If you already deployed #39-#43 with the old default, just update
-// GROQ_MODEL (or application.properties) -- no code changes needed, since
-// the model was already externalized as a property.
+// IMPORTANT MODEL CORRECTION (fixed in #44, applies retroactively to
+// #39-#43): the default model was "llama-3.3-70b-versatile", which Groq has
+// since deprecated -- it no longer appears on Groq's own Supported Models
+// page. Default is now "openai/gpt-oss-120b". If you already deployed
+// #39-#43 with the old default, just update GROQ_MODEL -- no code changes
+// needed, since the model was already externalized as a property.
 //
 // GROQ_API_KEY is intentionally OPTIONAL at startup (mirrors how
 // FirebaseConfig handles a missing FIREBASE_SERVICE_ACCOUNT_PATH): this app
@@ -25,8 +24,8 @@
 // AppSecretsProperties would crash the entire backend -- every unrelated
 // endpoint included -- the moment any of these features ships, if the key
 // hasn't been added on Render yet. Instead, every feature here degrades to
-// a clear 503 (or, for #43/#44's background scans, just logs and skips)
-// until the key is set.
+// a clear 503 (or, for the background scans, just logs and skips) until
+// the key is set.
 
 package Crowdspark.Crowdspark.service.impl;
 
@@ -41,23 +40,29 @@ import Crowdspark.Crowdspark.dto.RecommendedProjectResponse;
 import Crowdspark.Crowdspark.dto.SupportChatRequest;
 import Crowdspark.Crowdspark.dto.SupportChatResponse;
 import Crowdspark.Crowdspark.entity.Category;
+import Crowdspark.Crowdspark.entity.ContentModerationCheck;
 import Crowdspark.Crowdspark.entity.Donation;
 import Crowdspark.Crowdspark.entity.KycDocument;
 import Crowdspark.Crowdspark.entity.KycDocumentAiCheck;
 import Crowdspark.Crowdspark.entity.Project;
+import Crowdspark.Crowdspark.entity.ProjectComment;
 import Crowdspark.Crowdspark.entity.ProjectFraudCheck;
 import Crowdspark.Crowdspark.entity.ProjectMedia;
 import Crowdspark.Crowdspark.entity.SavedProject;
 import Crowdspark.Crowdspark.entity.User;
+import Crowdspark.Crowdspark.entity.type.ContentType;
 import Crowdspark.Crowdspark.entity.type.FraudCheckStatus;
 import Crowdspark.Crowdspark.entity.type.KycCheckStatus;
 import Crowdspark.Crowdspark.entity.type.MediaUsage;
+import Crowdspark.Crowdspark.entity.type.ModerationStatus;
 import Crowdspark.Crowdspark.entity.type.PaymentStatus;
 import Crowdspark.Crowdspark.entity.type.ProjectStatus;
 import Crowdspark.Crowdspark.queue.RedisQueueService;
+import Crowdspark.Crowdspark.repository.ContentModerationCheckRepository;
 import Crowdspark.Crowdspark.repository.DonationRepository;
 import Crowdspark.Crowdspark.repository.KycDocumentAiCheckRepository;
 import Crowdspark.Crowdspark.repository.KycDocumentRepository;
+import Crowdspark.Crowdspark.repository.ProjectCommentRepository;
 import Crowdspark.Crowdspark.repository.ProjectFraudCheckRepository;
 import Crowdspark.Crowdspark.repository.ProjectRepository;
 import Crowdspark.Crowdspark.repository.SavedProjectRepository;
@@ -111,6 +116,8 @@ public class AiServiceImpl implements AiService {
     private final ProjectFraudCheckRepository projectFraudCheckRepository;
     private final KycDocumentRepository       kycDocumentRepository;
     private final KycDocumentAiCheckRepository kycDocumentAiCheckRepository;
+    private final ContentModerationCheckRepository contentModerationCheckRepository;
+    private final ProjectCommentRepository   projectCommentRepository;
     private final RedisQueueService          queueService;
 
     private final ObjectMapper mapper = new ObjectMapper().findAndRegisterModules();
@@ -983,6 +990,151 @@ public class AiServiceImpl implements AiService {
     /** Queue payload — public+static so AiJobWorker can deserialize into it
      *  directly, same as FraudScanPayload above. */
     public record KycScanPayload(Long kycDocumentId) {}
+
+    // ═════════════════════════════════════════════════════════════════════
+    // Feature #45 — Content Moderation
+    // ═════════════════════════════════════════════════════════════════════
+    // Covers two content types with one shared check (runModerationCheck
+    // below) since the actual scan logic is identical either way — only the
+    // text being checked, and what happens on a FLAGGED result, differ:
+    //   - Projects: advisory only, same philosophy as #43. Projects already
+    //     have a mandatory human approval gate before going live, so a flag
+    //     here just adds a signal to that existing review, same admin/projects
+    //     queue #43 already surfaces into.
+    //   - Comments: no review gate exists before a comment is publicly
+    //     visible, so a FLAGGED result auto-hides it (deleted=true, the same
+    //     flag a real user/admin deletion already sets) pending a human
+    //     decision in the new admin moderation queue. This is the one place
+    //     in this feature that takes action on its own rather than staying
+    //     purely advisory -- justified by there being no other gate to lean
+    //     on the way projects and KYC both already have.
+
+    private static final String MODERATION_SYSTEM_PROMPT = """
+            You are a content moderator for CrowdSpark, a crowdfunding platform for creators in \
+            India. You will be given a piece of user-submitted content - either a campaign \
+            description or a comment - and asked to check it for policy violations.
+
+            Flag content only for real, specific violations:
+            - spam: repetitive junk, irrelevant links or advertising unrelated to the campaign, \
+              gibberish, or content that exists purely to promote something else.
+            - hate_speech: content that attacks, demeans, or incites hostility against people based \
+              on protected characteristics such as race, religion, gender, caste, nationality, \
+              sexual orientation, or disability.
+            - misleading: false or unverifiable claims of guaranteed returns, fake credentials, fake \
+              partnerships, or facts presented as certain that cannot possibly be known.
+
+            Ordinary disagreement, criticism, negative feedback, or a poorly written but genuine \
+            campaign are NOT violations. Only flag what the text actually contains - do not flag \
+            something because it seems unusual or because you are uncertain, and never invent a \
+            violation that is not actually present.
+
+            Respond with ONLY a single valid JSON object - no markdown code fences, no preamble, no \
+            text outside the JSON. It must have exactly these keys: flagged (true or false), \
+            category (one of spam, hate_speech, misleading, or none), and reasoning (one or two \
+            plain-text sentences explaining the decision either way).""";
+
+    @Override
+    public void queueProjectModerationScan(Long projectId) {
+        queueService.enqueue(AI_JOBS_QUEUE, "SCAN_PROJECT_MODERATION", new ProjectModerationPayload(projectId),
+                () -> scanProjectModeration(projectId));
+    }
+
+    @Override
+    public void queueCommentModerationScan(Long commentId) {
+        queueService.enqueue(AI_JOBS_QUEUE, "SCAN_COMMENT", new CommentModerationPayload(commentId),
+                () -> scanCommentModeration(commentId));
+    }
+
+    /** Called by AiJobWorker. Public (not on AiService) so the worker can
+     *  reach it directly, same pattern as scanProjectForFraud(). */
+    @Transactional
+    public void scanProjectModeration(Long projectId) {
+        if (apiKey == null || apiKey.isBlank()) {
+            log.warn("Moderation scan requested for project {} but GROQ_API_KEY is not configured — skipping", projectId);
+            return;
+        }
+        Project project = projectRepository.findById(projectId).orElse(null);
+        if (project == null) {
+            log.warn("Moderation scan requested for project {} but it no longer exists — skipping", projectId);
+            return;
+        }
+        String text = "Content type: campaign description\n\nTitle: " + project.getTitle()
+                + "\n\nShort pitch: " + project.getShortDescription()
+                + "\n\nFull story:\n" + project.getFullDescription();
+
+        // No onFlagged action — projects stay visible either way, pending
+        // the human admin review they already require before going live.
+        runModerationCheck(ContentType.PROJECT, projectId, text, null);
+    }
+
+    /** Called by AiJobWorker. Public (not on AiService), same as above. */
+    @Transactional
+    public void scanCommentModeration(Long commentId) {
+        if (apiKey == null || apiKey.isBlank()) {
+            log.warn("Moderation scan requested for comment {} but GROQ_API_KEY is not configured — skipping", commentId);
+            return;
+        }
+        ProjectComment comment = projectCommentRepository.findById(commentId).orElse(null);
+        if (comment == null || comment.isDeleted()) {
+            log.warn("Moderation scan requested for comment {} but it no longer exists or is already deleted — skipping", commentId);
+            return;
+        }
+        String text = "Content type: comment on a crowdfunding campaign\n\nComment text:\n" + comment.getContent();
+
+        runModerationCheck(ContentType.COMMENT, commentId, text, () -> {
+            comment.setDeleted(true);
+            projectCommentRepository.save(comment);
+            log.info("Comment {} auto-hidden by content moderation pending admin review", commentId);
+        });
+    }
+
+    /** Shared by both content types above — builds/finds the check record,
+     *  calls Groq, parses the verdict, and (only if flagged) runs the
+     *  content-type-specific reaction passed in as onFlagged. */
+    private void runModerationCheck(ContentType type, Long contentId, String textToCheck, Runnable onFlagged) {
+        ContentModerationCheck check = contentModerationCheckRepository
+                .findByContentTypeAndContentId(type, contentId)
+                .orElseGet(() -> {
+                    ContentModerationCheck c = new ContentModerationCheck();
+                    c.setContentType(type);
+                    c.setContentId(contentId);
+                    return c;
+                });
+
+        try {
+            String   raw  = callGroq(MODERATION_SYSTEM_PROMPT, textToCheck, 0.2);
+            JsonNode json = parseJson(raw);
+
+            boolean flagged   = json.path("flagged").asBoolean(false);
+            String  category  = trim(json.path("category").asText("none"), 20).toLowerCase();
+            String  reasoning = trim(json.path("reasoning").asText(""), 500);
+
+            check.setStatus(flagged ? ModerationStatus.FLAGGED : ModerationStatus.CLEAR);
+            check.setCategory(category);
+            check.setReasoning(reasoning.isBlank() ? "No specific concerns noted." : reasoning);
+            check.setModel(model);
+            check.setCheckedAt(LocalDateTime.now());
+            contentModerationCheckRepository.save(check);
+
+            if (flagged && onFlagged != null) {
+                onFlagged.run();
+            }
+
+        } catch (Exception e) {
+            // Groq down, malformed response, etc. — record FAILED rather
+            // than silently defaulting to CLEAR, so nothing gets waved
+            // through just because the check itself broke.
+            log.error("Content moderation scan failed for {} {}: {}", type, contentId, e.getMessage());
+            check.setStatus(ModerationStatus.FAILED);
+            check.setCheckedAt(LocalDateTime.now());
+            contentModerationCheckRepository.save(check);
+        }
+    }
+
+    /** Queue payloads — public+static so AiJobWorker can deserialize into
+     *  them directly, same as FraudScanPayload/KycScanPayload above. */
+    public record ProjectModerationPayload(Long projectId) {}
+    public record CommentModerationPayload(Long commentId) {}
 
     // ═════════════════════════════════════════════════════════════════════
     // Shared: Groq HTTP call, JSON parsing, small helpers

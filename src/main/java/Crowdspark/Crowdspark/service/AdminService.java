@@ -1,5 +1,6 @@
 package Crowdspark.Crowdspark.service;
 
+import Crowdspark.Crowdspark.dto.AdminFlaggedCommentResponse;
 import Crowdspark.Crowdspark.dto.AdminProjectListResponse;
 import Crowdspark.Crowdspark.dto.ProjectFullDetailsResponse;
 import Crowdspark.Crowdspark.dto.UserResponse;
@@ -26,4 +27,13 @@ public interface AdminService {
     void suspendUser(Long userId);                       // ✅ NEW
 
     void activateUser(Long userId);                      // ✅ NEW
+
+    // Feature #45 — AI Content Moderation: comments only (flagged projects
+    // already appear in getPendingProjects()/getAllProjects() above)
+    List<AdminFlaggedCommentResponse> getFlaggedComments();
+
+    /** restore=true un-hides the comment (deleted=false); restore=false
+     *  leaves it hidden. Either way marks the flag resolvedByAdmin=true so
+     *  it drops out of getFlaggedComments(). */
+    void resolveFlaggedComment(Long checkId, boolean restore);
 }
