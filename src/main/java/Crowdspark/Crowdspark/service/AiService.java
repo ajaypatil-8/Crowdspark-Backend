@@ -7,8 +7,9 @@
 // Feature #44 — AI KYC Document Validation
 // Feature #45 — AI Content Moderation
 // Feature #46 — AI Campaign Improvement Suggestions
-// (this interface will keep growing with #47-#48 as the other free-AI
-// creator/backer tools land)
+// Feature #47 — AI Auto-Tagging & Category Detection
+// (this interface will keep growing with #48 as the last free-AI creator/
+// backer tool lands)
 
 package Crowdspark.Crowdspark.service;
 
@@ -16,6 +17,8 @@ import Crowdspark.Crowdspark.dto.CampaignScoreRequest;
 import Crowdspark.Crowdspark.dto.CampaignScoreResponse;
 import Crowdspark.Crowdspark.dto.CampaignSuggestionsRequest;
 import Crowdspark.Crowdspark.dto.CampaignSuggestionsResponse;
+import Crowdspark.Crowdspark.dto.CategorySuggestionRequest;
+import Crowdspark.Crowdspark.dto.CategorySuggestionResponse;
 import Crowdspark.Crowdspark.dto.GenerateDescriptionRequest;
 import Crowdspark.Crowdspark.dto.GenerateDescriptionResponse;
 import Crowdspark.Crowdspark.dto.RecommendationsResponse;
@@ -119,5 +122,15 @@ public interface AiService {
      * @param creatorId used only to key the per-creator daily usage limit
      */
     CampaignSuggestionsResponse getCampaignSuggestions(CampaignSuggestionsRequest request, Long creatorId);
+
+    /**
+     * Suggests 0-2 category ids for a campaign in progress, matched only
+     * against the platform's real, currently-configured categories — never
+     * an invented one. Meant for Step 1 of the wizard, using just the title
+     * + short pitch (both already present on that step).
+     *
+     * @param creatorId used only to key the per-creator daily usage limit
+     */
+    CategorySuggestionResponse suggestCategories(CategorySuggestionRequest request, Long creatorId);
 }
 

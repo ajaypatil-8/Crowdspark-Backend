@@ -20,6 +20,8 @@ import Crowdspark.Crowdspark.dto.CampaignScoreRequest;
 import Crowdspark.Crowdspark.dto.CampaignScoreResponse;
 import Crowdspark.Crowdspark.dto.CampaignSuggestionsRequest;
 import Crowdspark.Crowdspark.dto.CampaignSuggestionsResponse;
+import Crowdspark.Crowdspark.dto.CategorySuggestionRequest;
+import Crowdspark.Crowdspark.dto.CategorySuggestionResponse;
 import Crowdspark.Crowdspark.dto.GenerateDescriptionRequest;
 import Crowdspark.Crowdspark.dto.GenerateDescriptionResponse;
 import Crowdspark.Crowdspark.dto.RecommendationsResponse;
@@ -174,5 +176,26 @@ public class AiController {
         User creator = userService.getByUsername(username);
         CampaignSuggestionsResponse response = aiService.getCampaignSuggestions(request, creator.getId());
         return ResponseEntity.ok(ApiResponse.ok("Suggestions generated", response));
+    }
+
+    /**
+     * POST /api/v1/ai/suggest-categories
+     * Creator only — suggests 0-2 category ids for Step 1 of the wizard,
+     * from just the title + short pitch. Always validated against the
+     * platform's real category list before returning.
+     */
+    @Operation(summary = "Suggest categories for a campaign in progress",
+            description = "Creator only. Uses just the title + short pitch (both present on Step 1); "
+                    + "suggested ids are always real, currently-configured categories.",
+            security = @SecurityRequirement(name = "bearerAuth"))
+    @PreAuthorize("hasRole('CREATOR')")
+    @PostMapping("/suggest-categories")
+    public ResponseEntity<ApiResponse<CategorySuggestionResponse>> suggestCategories(
+            @Valid @RequestBody CategorySuggestionRequest request,
+            @AuthenticationPrincipal String username) {
+
+        User creator = userService.getByUsername(username);
+        CategorySuggestionResponse response = aiService.suggestCategories(request, creator.getId());
+        return ResponseEntity.ok(ApiResponse.ok("Categories suggested", response));
     }
 }

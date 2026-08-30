@@ -7,8 +7,9 @@
 // Feature #44 — AI KYC Document Validation
 // Feature #45 — AI Content Moderation
 // Feature #46 — AI Campaign Improvement Suggestions
+// Feature #47 — AI Auto-Tagging & Category Detection
 //
-// All eight features share one Groq (OpenAI-compatible, free tier) client --
+// All nine features share one Groq (OpenAI-compatible, free tier) client --
 // see callGroq()/callGroqRaw() for text, callGroqVision() for #44's
 // image-input calls.
 //
@@ -34,6 +35,8 @@ import Crowdspark.Crowdspark.dto.CampaignScoreRequest;
 import Crowdspark.Crowdspark.dto.CampaignScoreResponse;
 import Crowdspark.Crowdspark.dto.CampaignSuggestionsRequest;
 import Crowdspark.Crowdspark.dto.CampaignSuggestionsResponse;
+import Crowdspark.Crowdspark.dto.CategorySuggestionRequest;
+import Crowdspark.Crowdspark.dto.CategorySuggestionResponse;
 import Crowdspark.Crowdspark.dto.ChatMessage;
 import Crowdspark.Crowdspark.dto.GenerateDescriptionRequest;
 import Crowdspark.Crowdspark.dto.GenerateDescriptionResponse;
@@ -61,6 +64,7 @@ import Crowdspark.Crowdspark.entity.type.ModerationStatus;
 import Crowdspark.Crowdspark.entity.type.PaymentStatus;
 import Crowdspark.Crowdspark.entity.type.ProjectStatus;
 import Crowdspark.Crowdspark.queue.RedisQueueService;
+import Crowdspark.Crowdspark.repository.CategoryRepository;
 import Crowdspark.Crowdspark.repository.ContentModerationCheckRepository;
 import Crowdspark.Crowdspark.repository.DonationRepository;
 import Crowdspark.Crowdspark.repository.KycDocumentAiCheckRepository;
@@ -121,6 +125,7 @@ public class AiServiceImpl implements AiService {
     private final KycDocumentAiCheckRepository kycDocumentAiCheckRepository;
     private final ContentModerationCheckRepository contentModerationCheckRepository;
     private final ProjectCommentRepository   projectCommentRepository;
+    private final CategoryRepository         categoryRepository;
     private final RedisQueueService          queueService;
 
     private final ObjectMapper mapper = new ObjectMapper().findAndRegisterModules();
@@ -156,6 +161,9 @@ public class AiServiceImpl implements AiService {
 
     @Value("${ai.suggestions.daily-limit:25}")
     private int suggestionsDailyLimit;
+
+    @Value("${ai.category-suggestion.daily-limit:25}")
+    private int categorySuggestionDailyLimit;
 
     private static final DateTimeFormatter DAY_KEY  = DateTimeFormatter.ofPattern("yyyyMMdd");
     private static final double            MIN_GOAL = 1_000;
@@ -1249,6 +1257,79 @@ public class AiServiceImpl implements AiService {
             }
         }
         return out;
+    }
+
+    // ═════════════════════════════════════════════════════════════════════
+    // Feature #47 — Auto-Tagging & Category Detection
+    // ═════════════════════════════════════════════════════════════════════
+    // Meant for Step 1 of the wizard: title + short pitch are both already
+    // on that step, so a suggestion can run before the creator has written
+    // the full story or touched any other step. The model is given the
+    // platform's REAL category list (id + name) and told to only pick from
+    // it; the response is re-validated against that same list server-side
+    // before being returned, so a hallucinated or stale id can never reach
+    // the frontend even if the model ignores the instruction.
+
+    private static final String CATEGORY_SYSTEM_PROMPT = """
+            You are a category classifier for CrowdSpark, a crowdfunding platform for creators in \
+            India. You will be given a campaign title and short pitch, plus the platform's list of \
+            available categories, each with an id and a name.
+
+            Pick the categories that genuinely fit this campaign - usually just one, occasionally two \
+            if the campaign clearly spans two areas. Only choose ids that appear in the list given - \
+            never invent a category or id that is not there. If nothing fits well, it is fine to \
+            return an empty list rather than forcing a weak match.
+
+            Respond with ONLY a single valid JSON object - no markdown code fences, no preamble, no \
+            text outside the JSON. It must have exactly these keys: categoryIds (an array of 0-2 \
+            numbers, each matching an id from the list given), and reasoning (one short plain-text \
+            sentence explaining the pick).""";
+
+    @Override
+    public CategorySuggestionResponse suggestCategories(CategorySuggestionRequest request, Long creatorId) {
+
+        requireApiKey();
+        enforceDailyLimit("category-suggestion", creatorId, categorySuggestionDailyLimit);
+
+        List<Category> allCategories = categoryRepository.findAll();
+        if (allCategories.isEmpty()) {
+            return CategorySuggestionResponse.builder()
+                    .categoryIds(List.of())
+                    .reasoning("No categories are configured on this platform yet.")
+                    .build();
+        }
+
+        String   raw  = callGroq(CATEGORY_SYSTEM_PROMPT, buildCategoryPrompt(request, allCategories), 0.2);
+        JsonNode json = parseJson(raw);
+
+        Set<Long> validIds = allCategories.stream().map(Category::getId).collect(Collectors.toSet());
+        List<Long> picked = new ArrayList<>();
+        if (json.path("categoryIds").isArray()) {
+            for (JsonNode idNode : json.path("categoryIds")) {
+                long id = idNode.asLong(-1);
+                if (validIds.contains(id) && !picked.contains(id)) {
+                    picked.add(id);
+                }
+                if (picked.size() >= 2) break;
+            }
+        }
+        String reasoning = trim(json.path("reasoning").asText(""), 200);
+
+        return CategorySuggestionResponse.builder()
+                .categoryIds(picked)
+                .reasoning(reasoning.isBlank() ? "Based on the title and pitch." : reasoning)
+                .build();
+    }
+
+    private String buildCategoryPrompt(CategorySuggestionRequest req, List<Category> categories) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("Campaign title: ").append(req.getTitle()).append('\n');
+        sb.append("Short pitch: ").append(req.getShortDescription()).append('\n');
+        sb.append("\nAvailable categories:\n");
+        for (Category c : categories) {
+            sb.append("id ").append(c.getId()).append(": ").append(c.getName()).append('\n');
+        }
+        return sb.toString();
     }
 
     // ═════════════════════════════════════════════════════════════════════
