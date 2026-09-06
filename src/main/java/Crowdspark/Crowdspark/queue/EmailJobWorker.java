@@ -115,6 +115,10 @@ public class EmailJobWorker {
                 emailServiceImpl.sendBackerReceiptEmailNow(p.toEmail(), p.backerName(), p.projectTitle(),
                         p.projectId(), p.donationId(), p.amount(), p.transactionId(), p.rewardTierTitle(), p.paidAt());
             }
+            case "WEEKLY_INSIGHT_DIGEST" -> {
+                var p = mapper.readValue(job.getPayloadJson(), EmailServiceImpl.WeeklyInsightDigestPayload.class);
+                emailServiceImpl.sendWeeklyInsightDigestEmailNow(p.toEmail(), p.creatorName(), p.items());
+            }
             default -> log.error("Unknown email job type '{}' — moving to dead-letter", job.getType());
         }
     }

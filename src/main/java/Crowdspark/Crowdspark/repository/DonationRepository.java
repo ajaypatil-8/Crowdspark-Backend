@@ -12,6 +12,7 @@ import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -58,6 +59,11 @@ public interface DonationRepository extends JpaRepository<Donation, Long> {
     List<Donation> findByProject_IdOrderByCreatedAtDesc(@Param("projectId") Long projectId);
 
     long countByProject_IdAndPaymentStatus(Long projectId, PaymentStatus status);
+
+    /** Feature #48 — new backers within a date range, for week-over-week
+     *  comparison in the weekly insight job. */
+    long countByProject_IdAndPaymentStatusAndCreatedAtBetween(
+            Long projectId, PaymentStatus status, LocalDateTime from, LocalDateTime to);
 
     long countByBacker_IdAndPaymentStatus(Long backerId, PaymentStatus status);
 

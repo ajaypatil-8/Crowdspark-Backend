@@ -23,6 +23,13 @@ public interface ProjectViewRepository extends JpaRepository<ProjectView, Long> 
     @Query("SELECT COALESCE(SUM(v.viewCount), 0) FROM ProjectView v WHERE v.project.id = :projectId")
     Long sumViewsByProject(@Param("projectId") Long projectId);
 
+    /** Feature #48 — views within a date range, for the weekly insight job. */
+    @Query("SELECT COALESCE(SUM(v.viewCount), 0) FROM ProjectView v " +
+           "WHERE v.project.id = :projectId AND v.viewDate BETWEEN :from AND :to")
+    Long sumViewsByProjectAndDateBetween(@Param("projectId") Long projectId,
+                                          @Param("from") LocalDate from,
+                                          @Param("to") LocalDate to);
+
     /** Total all-time unique visitors */
     @Query("SELECT COALESCE(SUM(v.uniqueCount), 0) FROM ProjectView v WHERE v.project.id = :projectId")
     Long sumUniqueByProject(@Param("projectId") Long projectId);

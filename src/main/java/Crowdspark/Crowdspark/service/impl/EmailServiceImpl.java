@@ -1,5 +1,6 @@
 package Crowdspark.Crowdspark.service.impl;
 
+import Crowdspark.Crowdspark.dto.WeeklyInsightItem;
 import Crowdspark.Crowdspark.queue.RedisQueueService;
 import Crowdspark.Crowdspark.service.EmailService;
 import Crowdspark.Crowdspark.service.PdfReceiptService;
@@ -20,6 +21,7 @@ import java.text.NumberFormat;
 import java.time.LocalDateTime;
 import java.time.Year;
 import java.time.format.DateTimeFormatter;
+import java.util.List;
 import java.util.Locale;
 
 @Slf4j
@@ -66,6 +68,7 @@ public class EmailServiceImpl implements EmailService {
     public record BackerReceiptPayload(String toEmail, String backerName, String projectTitle, Long projectId,
                                        Long donationId, Double amount, String transactionId,
                                        String rewardTierTitle, LocalDateTime paidAt) {}
+    public record WeeklyInsightDigestPayload(String toEmail, String creatorName, List<WeeklyInsightItem> items) {}
 
     // ─────────────────────────────────────────────────────────────────────────
     // OTP — numeric code (creator upgrade / KYC re-verification)
@@ -283,6 +286,65 @@ public class EmailServiceImpl implements EmailService {
 
         sendHtmlEmail(toEmail, "Your receipt for backing \"" + projectTitle + "\"", "backer-receipt", ctx, plainText,
                 pdfBytes, "CrowdSpark-Receipt-" + donationId + ".pdf");
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Weekly insight digest (Feature #48) — one email per creator, listing
+    // every live campaign's AI-written weekly summary together, rather than
+    // a separate email per campaign.
+    // ─────────────────────────────────────────────────────────────────────────
+    @Override
+    public void sendWeeklyInsightDigestEmail(String toEmail, String creatorName, List<WeeklyInsightItem> items) {
+        queueService.enqueue(EMAIL_QUEUE, "WEEKLY_INSIGHT_DIGEST",
+                new WeeklyInsightDigestPayload(toEmail, creatorName, items),
+                () -> sendWeeklyInsightDigestEmailNow(toEmail, creatorName, items));
+    }
+
+    public void sendWeeklyInsightDigestEmailNow(String toEmail, String creatorName, List<WeeklyInsightItem> items) {
+        if (items == null || items.isEmpty()) {
+            log.warn("Weekly insight digest requested for {} with no items — skipping send", toEmail);
+            return;
+        }
+        String safeName = nullSafe(creatorName, "there");
+
+        // Mapped to plain Maps (not the WeeklyInsightItem records directly)
+        // specifically for Thymeleaf: ${item.projectTitle} against a Map
+        // resolves unambiguously via get("projectTitle"), whereas relying on
+        // SpEL to resolve a record's no-prefix accessor method is a detail
+        // of the exact Spring version that isn't worth risking in a template
+        // that only gets visually checked once it's already emailing people.
+        List<java.util.Map<String, Object>> templateItems = new java.util.ArrayList<>();
+        for (WeeklyInsightItem item : items) {
+            java.util.Map<String, Object> m = new java.util.LinkedHashMap<>();
+            m.put("projectTitle", item.projectTitle());
+            m.put("projectId", item.projectId());
+            m.put("summary", item.summary());
+            m.put("fundedPercent", Math.max(0, Math.min(100, item.fundedPercent())));
+            m.put("newBackersThisWeek", item.newBackersThisWeek());
+            m.put("projectUrl", frontendUrl + "/projects/" + item.projectId());
+            templateItems.add(m);
+        }
+
+        Context ctx = baseContext();
+        ctx.setVariable("creatorName", safeName);
+        ctx.setVariable("items", templateItems);
+        ctx.setVariable("dashboardUrl", frontendUrl + "/dashboard");
+        ctx.setVariable("campaignCount", items.size());
+
+        StringBuilder plain = new StringBuilder("Hi ").append(safeName)
+                .append(", here's how your campaign").append(items.size() > 1 ? "s" : "")
+                .append(" did this week:\n\n");
+        for (WeeklyInsightItem item : items) {
+            plain.append("\"").append(item.projectTitle()).append("\" (").append(item.fundedPercent())
+                    .append("% funded): ").append(item.summary()).append("\n\n");
+        }
+        plain.append("Team CrowdSpark");
+
+        String subject = items.size() == 1
+                ? "This week on \"" + items.get(0).projectTitle() + "\""
+                : "Your weekly CrowdSpark update — " + items.size() + " campaigns";
+
+        sendHtmlEmail(toEmail, subject, "weekly-insight-digest", ctx, plain.toString());
     }
 
     // ─────────────────────────────────────────────────────────────────────────

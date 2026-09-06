@@ -8,8 +8,9 @@
 // Feature #45 — AI Content Moderation
 // Feature #46 — AI Campaign Improvement Suggestions
 // Feature #47 — AI Auto-Tagging & Category Detection
+// Feature #48 — AI Creator Analytics Insights (the last of the 10)
 //
-// All nine features share one Groq (OpenAI-compatible, free tier) client --
+// All ten features share one Groq (OpenAI-compatible, free tier) client --
 // see callGroq()/callGroqRaw() for text, callGroqVision() for #44's
 // image-input calls.
 //
@@ -1330,6 +1331,73 @@ public class AiServiceImpl implements AiService {
             sb.append("id ").append(c.getId()).append(": ").append(c.getName()).append('\n');
         }
         return sb.toString();
+    }
+
+    // ═════════════════════════════════════════════════════════════════════
+    // Feature #48 — Creator Analytics Insights (natural language)
+    // ═════════════════════════════════════════════════════════════════════
+    // The only AI feature in this file called from a @Scheduled job
+    // (CreatorInsightSchedulerService, new in this feature) instead of a
+    // live HTTP request or an async queue — it's already running inside a
+    // weekly batch job, so there's nothing further to make async. Every
+    // number in the prompt is computed by the caller from real data before
+    // this method ever runs; this only turns those numbers into 2-4
+    // sentences of prose, it never invents or looks up anything itself.
+
+    private static final String WEEKLY_INSIGHT_SYSTEM_PROMPT = """
+            You are writing a short, friendly weekly performance update for a creator on CrowdSpark, \
+            a crowdfunding platform in India. All amounts are in Indian Rupees (INR). You will be \
+            given this week's numbers for one of their live campaigns.
+
+            Write 2 to 4 sentences summarizing how the week went, in a natural, encouraging tone - not \
+            corporate, not over the top. Mention the most relevant number or trend (funding progress, \
+            new backers, views), and if something is worth their attention (funding has stalled, the \
+            deadline is close), say so plainly and kindly rather than glossing over it. Never invent a \
+            number or fact you were not given.
+
+            Respond with ONLY a single valid JSON object - no markdown code fences, no preamble, no \
+            text outside the JSON. It must have exactly one key: summary, a short plain-text paragraph \
+            (2-4 sentences, no markdown).""";
+
+    @Override
+    public String generateWeeklyInsightText(String projectTitle, double currentAmount, double goalAmount,
+                                             long daysLeft, long viewsThisWeek,
+                                             long newBackersThisWeek, long newBackersLastWeek) {
+
+        if (apiKey == null || apiKey.isBlank()) {
+            log.warn("Weekly insight requested for \"{}\" but GROQ_API_KEY is not configured — skipping", projectTitle);
+            return null; // scheduler skips the email/row for this project rather than storing a placeholder
+        }
+
+        int fundedPercent = goalAmount > 0 ? (int) Math.round((currentAmount / goalAmount) * 100) : 0;
+        String trend = newBackersThisWeek > newBackersLastWeek ? "up from"
+                : newBackersThisWeek < newBackersLastWeek ? "down from" : "the same as";
+
+        String userPrompt = "Campaign: " + projectTitle + '\n'
+                + "Raised so far: INR " + String.format("%,.0f", currentAmount)
+                + " of INR " + String.format("%,.0f", goalAmount) + " (" + fundedPercent + "%)\n"
+                + "Days left: " + daysLeft + '\n'
+                + "Views this week: " + viewsThisWeek + '\n'
+                + "New backers this week: " + newBackersThisWeek + " (" + trend + " last week's "
+                + newBackersLastWeek + ")";
+
+        try {
+            String   raw  = callGroq(WEEKLY_INSIGHT_SYSTEM_PROMPT, userPrompt, 0.6);
+            JsonNode json = parseJson(raw);
+            String   summary = trim(json.path("summary").asText(""), 600);
+            return summary.isBlank() ? null : summary;
+        } catch (Exception e) {
+            // Scheduler catches per-project, same as DeadlineSchedulerService's
+            // per-item try/catch — one failed summary shouldn't stop the rest
+            // of the week's batch from running.
+            log.error("Weekly insight generation failed for \"{}\": {}", projectTitle, e.getMessage());
+            return null;
+        }
+    }
+
+    @Override
+    public String getConfiguredModel() {
+        return model;
     }
 
     // ═════════════════════════════════════════════════════════════════════

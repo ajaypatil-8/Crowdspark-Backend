@@ -8,8 +8,8 @@
 // Feature #45 — AI Content Moderation
 // Feature #46 — AI Campaign Improvement Suggestions
 // Feature #47 — AI Auto-Tagging & Category Detection
-// (this interface will keep growing with #48 as the last free-AI creator/
-// backer tool lands)
+// Feature #48 — AI Creator Analytics Insights
+// This is the last of the 10 free-AI features (#39-#48).
 
 package Crowdspark.Crowdspark.service;
 
@@ -132,5 +132,23 @@ public interface AiService {
      * @param creatorId used only to key the per-creator daily usage limit
      */
     CategorySuggestionResponse suggestCategories(CategorySuggestionRequest request, Long creatorId);
+
+    /**
+     * Writes a short (2-4 sentence) natural-language weekly performance
+     * summary for one live campaign, grounded only in the numbers passed
+     * in. Called synchronously from CreatorInsightSchedulerService's
+     * weekly @Scheduled job — no queue involved here, unlike #43-#45,
+     * since this already runs inside a scheduled batch job rather than in
+     * response to a live user request.
+     */
+    String generateWeeklyInsightText(String projectTitle, double currentAmount, double goalAmount,
+                                      long daysLeft, long viewsThisWeek,
+                                      long newBackersThisWeek, long newBackersLastWeek);
+
+    /** The general-purpose text model currently configured (groq.model) —
+     *  exposed so callers like CreatorInsightSchedulerService can record
+     *  which model actually produced a result, rather than a hardcoded
+     *  placeholder string. */
+    String getConfiguredModel();
 }
 
